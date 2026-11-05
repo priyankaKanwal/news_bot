@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>News Chatbot Build Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout idea: a newsroom wire-desk. Sticky contents rail on the left, one reading column on the right. */
+  --paper: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #15202d;
+  --muted: #5b6777;
+  --rule: #d8dee6;
+  --accent: #2350c8;
+  --accent-soft: #e6ecfb;
+  --good: #1b7a48;
+  --good-soft: #e3f3ea;
+  --bad: #b42318;
+  --bad-soft: #fbe9e7;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e131a; --surface: #161d27; --ink: #e5e9ef; --muted: #9ba7b6; --rule: #2a3442;
+    --accent: #85a6ff; --accent-soft: #1c2847;
+    --good: #5cc98e; --good-soft: #14301f; --bad: #f2806f; --bad-soft: #3a1a17; --warn: #e6b45c; --warn-soft: #362812;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e131a; --surface: #161d27; --ink: #e5e9ef; --muted: #9ba7b6; --rule: #2a3442;
+  --accent: #85a6ff; --accent-soft: #1c2847;
+  --good: #5cc98e; --good-soft: #14301f; --bad: #f2806f; --bad-soft: #3a1a17; --warn: #e6b45c; --warn-soft: #362812;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+}
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, pre { font-family: var(--font-mono); font-size: 0.86em; }
+code { background: var(--accent-soft); padding: 0.1em 0.35em; border-radius: 4px; }
+pre {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 14px 16px; overflow-x: auto; line-height: 1.5; margin: 0;
+}
+pre code { background: none; padding: 0; font-size: 0.82rem; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 650; }
+h2 { font-size: 1.7rem; font-weight: 650; }
+h3 { font-size: 1.2rem; font-weight: 650; }
+p { margin: 0; }
+
+.shell {
+  max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px;
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px;
+}
+nav.toc { position: sticky; top: 24px; align-self: start; font-size: 0.9rem; }
+nav.toc .label { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s -1; }
+nav.toc li { counter-increment: s; }
+nav.toc a {
+  display: flex; gap: 10px; text-decoration: none; color: var(--ink);
+  padding: 5px 8px; border-radius: 6px; border-left: 2px solid transparent;
+}
+nav.toc a::before { content: counter(s, decimal-leading-zero); color: var(--muted); font-family: var(--font-mono); font-size: 0.8rem; padding-top: 1px; }
+nav.toc a:hover { background: var(--accent-soft); border-left-color: var(--accent); }
+
+main { display: grid; gap: 64px; min-width: 0; }
+section { display: grid; gap: 18px; scroll-margin-top: 20px; }
+.prose { max-width: 68ch; display: grid; gap: 12px; }
+.eyebrow { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lede { font-size: 1.12rem; color: var(--muted); max-width: 64ch; }
+.muted { color: var(--muted); }
+
+header.top { display: grid; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--rule); }
+.facts { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  font-size: 0.82rem; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--muted);
+}
+.chip b { color: var(--ink); font-weight: 600; }
+
+/* Diagram */
+figure { margin: 0; display: grid; gap: 10px; }
+figure .frame { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; overflow-x: auto; }
+figure svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 0.9rem; color: var(--muted); max-width: 72ch; }
+.arch .box { fill: var(--surface); stroke: currentColor; stroke-width: 1.2; }
+.arch .box.key { stroke: var(--accent); stroke-width: 2; fill: var(--accent-soft); }
+.arch .t { font: 600 13px var(--font-body); fill: currentColor; }
+.arch .s { font: 400 11px var(--font-body); fill: var(--muted); }
+.arch .lane { font: 600 11px var(--font-body); letter-spacing: 0.1em; fill: var(--muted); }
+.arch .edge { stroke: currentColor; stroke-width: 1.3; fill: none; }
+.arch .edge.acc { stroke: var(--accent); stroke-width: 2; }
+.arch .lbl { font: 400 11px var(--font-body); fill: var(--muted); }
+.arch .lbl.acc { fill: var(--accent); font-weight: 600; }
+.arch .head { fill: currentColor; }
+.arch .head.acc { fill: var(--accent); }
+
+/* Cards and grids */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px; display: grid; gap: 8px; align-content: start; }
+.card h3 { font-size: 1.08rem; }
+.card .analogy { font-size: 0.88rem; color: var(--muted); border-top: 1px dashed var(--rule); padding-top: 8px; }
+.card .analogy b { color: var(--ink); font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--paper); }
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Weekly plan */
+.weeks { display: grid; gap: 16px; }
+.week { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.week-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+.week-head h3 { font-size: 1.15rem; }
+.week-head .tag { font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent); }
+.progress { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.week-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.tasks { list-style: none; margin: 0; padding: 12px 18px; display: grid; gap: 6px; }
+.tasks label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.tasks input { margin-top: 5px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.tasks input:checked + span { color: var(--muted); text-decoration: line-through; }
+.done-when { padding: 14px 18px; background: var(--paper); border-left: 1px solid var(--rule); font-size: 0.9rem; display: grid; gap: 8px; align-content: start; }
+.done-when .k { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.done-when ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Retention widget */
+.widget { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px; display: grid; gap: 16px; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: end; }
+.field { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.field input[type="date"] {
+  font: inherit; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px;
+}
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 0.85rem; padding: 7px 12px; border: none; cursor: pointer;
+  background: var(--paper); color: var(--ink);
+}
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.cutoff-line { font-size: 0.95rem; }
+.cutoff-line b { font-variant-numeric: tabular-nums; }
+.timeline { position: relative; height: 54px; border-radius: 8px; background: var(--paper); border: 1px solid var(--rule); }
+.timeline .expired-zone { position: absolute; top: 0; bottom: 0; left: 0; background: var(--bad-soft); border-radius: 8px 0 0 8px; }
+.timeline .cut { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--accent); }
+.timeline .dot { position: absolute; top: 20px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--surface); }
+.timeline .dot.keep { background: var(--good); }
+.timeline .dot.drop { background: var(--bad); }
+.timeline .dot.flag { background: var(--warn); }
+.timeline .end { position: absolute; bottom: 2px; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.keep { background: var(--good-soft); color: var(--good); }
+.pill.drop { background: var(--bad-soft); color: var(--bad); }
+.pill.flag { background: var(--warn-soft); color: var(--warn); }
+.note { font-size: 0.88rem; color: var(--muted); border-left: 3px solid var(--warn); padding: 4px 0 4px 12px; }
+
+.callout { background: var(--accent-soft); border-radius: 10px; padding: 16px 18px; display: grid; gap: 6px; max-width: 72ch; }
+.callout b { color: var(--ink); }
+
+.pitfalls { display: grid; gap: 10px; counter-reset: p; }
+.pitfall { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--bad); border-radius: 8px; padding: 12px 16px; }
+.pitfall::before { counter-increment: p; content: counter(p); font-family: var(--font-display); font-size: 1.4rem; color: var(--bad); line-height: 1.1; }
+.pitfall p + p { color: var(--muted); font-size: 0.92rem; margin-top: 2px; }
+
+.map .pt { fill: var(--muted); }
+.map .pt.hit { fill: var(--good); }
+.map .q { fill: var(--accent); }
+.map .link { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.map .zone { fill: none; stroke: var(--rule); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.map .cl { font: 600 12px var(--font-body); fill: currentColor; }
+.map .cs { font: 400 11px var(--font-body); fill: var(--muted); }
+.map .ql { font: 600 12px var(--font-body); fill: var(--accent); }
+.journey { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: j; }
+.journey li { counter-increment: j; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; }
+.journey li::before { content: counter(j); width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 0.85rem; display: grid; place-items: center; }
+.journey .ex { display: block; font-size: 0.88rem; color: var(--muted); }
+/* RAG animation */
+.anim .st { opacity: 0.12; transition: opacity 0.5s ease; }
+.anim .st.on { opacity: 1; }
+.anim .panel { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+.anim .pt { fill: var(--muted); }
+.anim .pt.hit { fill: var(--good); }
+.anim .q { fill: var(--accent); }
+.anim .link { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.anim .slip { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+.anim .rule { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1; }
+.anim .chipr { fill: var(--good-soft); stroke: var(--good); stroke-width: 1; }
+.anim .mono { font: 500 12px var(--font-mono); fill: var(--accent); }
+.anim .ans { font: 400 13px var(--font-body); fill: currentColor; }
+.anim .cite { font: 600 13px var(--font-body); fill: var(--accent); }
+.anim .chipt { font: 600 11px var(--font-body); fill: var(--good); }
+.anim .glow { fill: none; stroke: var(--accent); stroke-width: 3; opacity: 0; }
+.anim .now .glow { opacity: 1; animation: pulse 1.4s ease-in-out infinite; }
+.anim .now .flow { stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 7 5; animation: flow 0.7s linear infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@keyframes flow { to { stroke-dashoffset: -12; } }
+@media (prefers-reduced-motion: reduce) {
+  .anim .st { transition: none; }
+  .anim .now .glow, .anim .now .flow { animation: none; }
+}
+.anim-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.btn { font: inherit; font-size: 0.9rem; padding: 7px 14px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; min-width: 84px; }
+.stepbtns { display: inline-flex; gap: 6px; margin-left: auto; }
+.stepbtn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--rule); background: var(--surface); color: var(--muted); font: 600 0.85rem var(--font-body); cursor: pointer; }
+.stepbtn[aria-current="step"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.anim-cap { min-height: 3.2em; font-size: 1rem; max-width: 80ch; }
+.anim-cap b { color: var(--accent); }
+.arch .bad { fill: var(--bad); }
+.arch .goodt { fill: var(--good); }
+
+/* Version matrix */
+.matrix td.c { text-align: center; width: 52px; padding: 8px 4px; }
+.matrix th.c { text-align: center; padding: 10px 4px; }
+.matrix .yes { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--accent); }
+.matrix .new { display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--good); }
+.matrix .no { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px dashed var(--rule); }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--accent); vertical-align: middle; margin-right: 8px; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  nav.toc { position: static; }
+  nav.toc ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .week-body { grid-template-columns: minmax(0, 1fr); }
+  .done-when { border-left: none; border-top: 1px solid var(--rule); }
+}
+@media (max-width: 560px) {
+  .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
+  nav.toc ol { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="toc" aria-label="Contents">
+    <div class="label">Contents</div>
+    <ol>
+      <li><a href="#plain">Start here: plain English</a></li>
+      <li><a href="#rag-anim">RAG, animated</a></li>
+      <li><a href="#overview">The big picture</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#concepts">Concepts to learn</a></li>
+      <li><a href="#stack">Stack, mapped to what you know</a></li>
+      <li><a href="#data">Data model</a></li>
+      <li><a href="#retention">The 30-day window</a></li>
+      <li><a href="#rag">How a question is answered</a></li>
+      <li><a href="#plan">Build it in versions</a></li>
+      <li><a href="#structure">Repo layout</a></li>
+      <li><a href="#tests">Tests and marks</a></li>
+      <li><a href="#pitfalls">Pitfalls</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="top">
+      <div class="eyebrow">Build guide for docs/PRD.md</div>
+      <h1>AI-Powered News Intelligence Chatbot</h1>
+      <p class="lede">A RAG system that reads RSS feeds every day, keeps only the last 30 days of news in a vector database, and answers questions with cited sources. This page turns the PRD into a picture, a vocabulary and a plan you can work through.</p>
+      <div class="facts">
+        <span class="chip"><b>7</b> modules</span>
+        <span class="chip"><b>10</b> mandatory test cases</span>
+        <span class="chip"><b>3–4</b> weeks</span>
+        <span class="chip">Backend <b>Python · FastAPI</b></span>
+        <span class="chip">Frontend <b>React</b></span>
+        <span class="chip">Vector DB <b>Qdrant</b></span>
+      </div>
+    </header>
+
+    <section id="plain">
+      <div class="eyebrow">Start here</div>
+      <h2>The whole project in plain English</h2>
+      <div class="prose">
+        <p>Forget the AI words for a minute. Picture a small office with a <b>clippings room</b> and two staff members.</p>
+        <p><b>The night clerk</b> comes in every morning. They collect the newest articles from a list of news websites, cut away the ads and clutter, and throw out any copy of a story already on file. Then they file each article. They don't file alphabetically, though. They file <b>by what the article is about</b>, so all the interest-rate stories sit on one shelf and all the cricket stories on another. Before leaving, they throw away any clipping more than 30 days old.</p>
+        <p><b>The researcher</b> sits at the front desk. When a visitor asks "What did the RBI announce recently?", the researcher walks to the shelf that matches that topic and pulls the eight closest clippings. They hand those to a <b>very fast writer</b> with one strict instruction: "Write an answer using only these clippings, and say which clipping each fact came from. If they don't cover it, say you don't know."</p>
+        <p>That's the whole project. The night clerk is your <b>ingestion pipeline</b>. The shelves are the <b>vector database</b>. The researcher is your <b>backend API</b>. The fast writer is the <b>LLM</b> (a model like Gemini or ChatGPT). The front desk is your <b>React chat page</b>.</p>
+      </div>
+
+      <div class="callout">
+        <p><b>Why not just ask ChatGPT or Gemini directly?</b> On their own, these models only know what they read during training, which ends months before today. They don't know this morning's news, and when they don't know something they often write a confident, made-up answer. This project gives the model fresh clippings and forbids it from going beyond them. That method has a name: <b>RAG</b>, short for Retrieval-Augmented Generation, which means "look things up first (retrieval), then write (generation)".</p>
+      </div>
+
+      <h3>The one new idea: filing by meaning</h3>
+      <div class="prose">
+        <p>A computer can't tell that "RBI hikes repo rate" and "central bank raises borrowing costs" say the same thing. Searching for the word "RBI" would miss the second headline. So we use an <b>embedding model</b>: a ready-made service that reads a piece of text and gives back a list of numbers, like GPS coordinates on a map of topics. Texts about similar things get coordinates close together, even when they share no words.</p>
+        <p>The real map has hundreds of dimensions instead of two, but the idea is the same as this picture. Your question gets coordinates too, and "search" just means finding the clippings closest to it.</p>
+      </div>
+      <figure>
+        <div class="frame">
+          <svg class="map" viewBox="0 0 640 330" role="img" aria-label="A map of meaning with three clusters of articles: sports, technology and economy. A question about the RBI lands inside the economy cluster and is linked to its three nearest articles." style="min-width:520px">
+            <ellipse class="zone" cx="125" cy="95" rx="95" ry="65"/>
+            <ellipse class="zone" cx="510" cy="95" rx="95" ry="65"/>
+            <ellipse class="zone" cx="300" cy="250" rx="115" ry="62"/>
+            <text class="cl" x="125" y="22" text-anchor="middle">Sports</text>
+            <text class="cs" x="125" y="38" text-anchor="middle">cricket, football</text>
+            <text class="cl" x="510" y="22" text-anchor="middle">Technology</text>
+            <text class="cs" x="510" y="38" text-anchor="middle">AI, chips, phones</text>
+            <text class="cl" x="300" y="180" text-anchor="middle">Economy</text>
+            <text class="cs" x="300" y="196" text-anchor="middle">RBI, inflation, rupee</text>
+            <circle class="pt" cx="95" cy="80" r="7"/><circle class="pt" cx="140" cy="68" r="7"/>
+            <circle class="pt" cx="160" cy="110" r="7"/><circle class="pt" cx="105" cy="125" r="7"/>
+            <circle class="pt" cx="480" cy="80" r="7"/><circle class="pt" cx="530" cy="68" r="7"/>
+            <circle class="pt" cx="550" cy="112" r="7"/><circle class="pt" cx="495" cy="125" r="7"/>
+            <circle class="pt" cx="215" cy="255" r="7"/><circle class="pt" cx="385" cy="262" r="7"/>
+            <circle class="pt hit" cx="290" cy="225" r="7"/><circle class="pt hit" cx="345" cy="250" r="7"/>
+            <circle class="pt hit" cx="280" cy="285" r="7"/>
+            <line class="link" x1="310" y1="255" x2="290" y2="225"/>
+            <line class="link" x1="310" y1="255" x2="345" y2="250"/>
+            <line class="link" x1="310" y1="255" x2="280" y2="285"/>
+            <polygon class="q" points="310,243 322,255 310,267 298,255"/>
+            <text class="ql" x="430" y="200">Your question:</text>
+            <text class="ql" x="430" y="216">"What did the RBI</text>
+            <text class="ql" x="430" y="232">announce recently?"</text>
+            <line class="link" x1="428" y1="222" x2="326" y2="254"/>
+          </svg>
+        </div>
+        <figcaption>Each grey dot is an article. The question (blue diamond) lands among the economy articles, and the three nearest (green) are what get handed to the writer. Sports and tech articles are never even considered.</figcaption>
+      </figure>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>What happens to one article</h3>
+          <ol class="journey">
+            <li><span>The clerk reads a news site's <b>RSS feed</b>, a plain list of its latest headlines that sites publish for programs to read.<span class="ex">Found: "RBI keeps repo rate unchanged", 4 Nov, The Hindu</span></span></li>
+            <li><span>Strip HTML tags and junk; convert the date to one standard time zone.</span></li>
+            <li><span>Check the database: have we stored this link before? If yes, skip it.</span></li>
+            <li><span>Cut a long article into short passages called <b>chunks</b>, a few paragraphs each.</span></li>
+            <li><span>Send each chunk to the embedding model and get its coordinates back.<span class="ex">[0.013, −0.27, 0.88, … ] (768 numbers)</span></span></li>
+            <li><span>Save the coordinates plus the headline, link, publisher and date in Qdrant.</span></li>
+            <li><span>31 days later, the cleanup job deletes it.</span></li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>What happens to one question</h3>
+          <ol class="journey">
+            <li><span>The visitor types a question in the chat page.<span class="ex">"What did the RBI announce recently?"</span></span></li>
+            <li><span>Your backend sends the question to the same embedding model and gets its coordinates.</span></li>
+            <li><span>Ask Qdrant: "the 8 nearest chunks, <b>published in the last 30 days only</b>".</span></li>
+            <li><span>If nothing is close enough, reply "I don't have recent news on that" and stop.</span></li>
+            <li><span>Otherwise, send the chunks plus strict instructions to the LLM.</span></li>
+            <li><span>The answer appears word by word, like ChatGPT does (<b>streaming</b>), with numbered links to the original articles.<span class="ex">"The RBI kept the repo rate at … [1]" → [1] The Hindu, 4 Nov</span></span></li>
+          </ol>
+        </div>
+      </div>
+
+      <h3>Jargon dictionary</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Word you'll see</th><th>What it actually means</th></tr></thead>
+          <tbody>
+            <tr><td>RSS feed</td><td>A file a news site publishes listing its latest articles (title, short summary, link, date) for programs to read. Usually a URL ending in <code>/rss</code> or <code>.xml</code>.</td></tr>
+            <tr><td>LLM</td><td>Large Language Model. The writer: Gemini, ChatGPT and similar. You send it text over an API and it sends back text.</td></tr>
+            <tr><td>Prompt</td><td>The message you send the LLM: your instructions, plus the clippings, plus the question.</td></tr>
+            <tr><td>Embedding / vector</td><td>The list of numbers (coordinates) that represents what a text means. "Vector" is just the maths word for a list of numbers.</td></tr>
+            <tr><td>Embedding model</td><td>The service that turns text into those numbers. It's separate from the LLM: it doesn't write anything.</td></tr>
+            <tr><td>Vector database (Qdrant)</td><td>A database that can answer "which stored items are closest to these coordinates?" quickly. Each item also stores normal fields like title and date.</td></tr>
+            <tr><td>Payload / metadata</td><td>Those normal fields stored next to the coordinates: title, link, publisher, date.</td></tr>
+            <tr><td>Semantic search</td><td>Search by meaning (closest coordinates) instead of matching exact words.</td></tr>
+            <tr><td>Similarity score</td><td>How close two items are on the map, usually between 0 and 1. Higher means more alike.</td></tr>
+            <tr><td>Top-k</td><td>"The k best results." Top-8 means the 8 closest chunks.</td></tr>
+            <tr><td>Chunk</td><td>A short passage cut from a long article, so each one is about a single thing.</td></tr>
+            <tr><td>RAG</td><td>Look up relevant text first, then let the LLM write an answer from it.</td></tr>
+            <tr><td>Hallucination</td><td>When an LLM states something false with confidence. RAG plus strict instructions is how you prevent it.</td></tr>
+            <tr><td>Grounded</td><td>An answer where every fact comes from a retrieved article you can link to.</td></tr>
+            <tr><td>Ingestion</td><td>The whole "collect, clean, store" process the night clerk does.</td></tr>
+            <tr><td>Deduplication</td><td>Making sure the same story isn't stored twice.</td></tr>
+            <tr><td>Token</td><td>A piece of a word (roughly ¾ of a word). LLM limits and pricing are counted in tokens.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="max-width:72ch">Everything below this point is the same project described in technical terms. When a later section uses a word you don't know, come back to this dictionary.</p>
+    </section>
+
+    <section id="rag-anim">
+      <div class="eyebrow">RAG, animated</div>
+      <h2>Watch one question travel through the system</h2>
+      <div class="prose"><p>Press <b>Play</b>, or step through with Back and Next. Each step lights up the part of the system doing the work. The articles are made-up samples.</p></div>
+      <figure>
+        <div class="frame">
+          <svg class="arch anim" viewBox="0 0 900 380" role="img" aria-label="Six steps: a question is typed, turned into numbers by the embedding model, matched against nearby articles in Qdrant, packed into a prompt with rules, sent to the LLM, and returned as an answer with numbered source links.">
+            <defs>
+              <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+
+            <!-- Base layer: things that always exist -->
+            <rect class="panel" x="390" y="20" width="220" height="200" rx="10"/>
+            <text class="t" x="500" y="42" text-anchor="middle">Qdrant: news by meaning</text>
+            <circle class="pt" cx="420" cy="72" r="6"/><circle class="pt" cx="447" cy="96" r="6"/><circle class="pt" cx="428" cy="122" r="6"/>
+            <circle class="pt" cx="572" cy="70" r="6"/><circle class="pt" cx="586" cy="104" r="6"/><circle class="pt" cx="555" cy="124" r="6"/>
+            <circle class="pt" cx="440" cy="178" r="6"/><circle class="pt" cx="500" cy="150" r="6"/><circle class="pt" cx="532" cy="176" r="6"/>
+            <circle class="pt" cx="485" cy="196" r="6"/><circle class="pt" cx="580" cy="190" r="6"/>
+            <text class="s" x="420" y="148">sports</text><text class="s" x="560" y="146">tech</text>
+
+            <rect class="panel" x="650" y="20" width="230" height="200" rx="10"/>
+            <text class="t" x="765" y="42" text-anchor="middle">Prompt sent to the LLM</text>
+
+            <rect class="box" x="650" y="262" width="230" height="80" rx="10"/>
+            <text class="t" x="765" y="296" text-anchor="middle">LLM (Gemini)</text>
+            <text class="s" x="765" y="316" text-anchor="middle">only reads and writes</text>
+
+            <rect class="panel" x="20" y="262" width="590" height="100" rx="10"/>
+            <text class="lane" x="36" y="254">ANSWER SHOWN IN THE CHAT</text>
+
+            <!-- Step 1: question -->
+            <g class="st on" data-step="1">
+              <rect class="glow" x="16" y="46" width="158" height="88" rx="12"/>
+              <rect class="box" x="20" y="50" width="150" height="80" rx="10"/>
+              <text class="lane" x="20" y="40">VISITOR ASKS</text>
+              <text class="t" x="95" y="84" text-anchor="middle">What did the RBI</text>
+              <text class="t" x="95" y="102" text-anchor="middle">announce recently?</text>
+            </g>
+
+            <!-- Step 2: embedding -->
+            <g class="st on" data-step="2">
+              <line class="edge flow" x1="170" y1="90" x2="207" y2="90" marker-end="url(#ah2)"/>
+              <rect class="glow" x="206" y="46" width="148" height="88" rx="12"/>
+              <rect class="box" x="210" y="50" width="140" height="80" rx="10"/>
+              <text class="t" x="280" y="84" text-anchor="middle">Embedding model</text>
+              <text class="s" x="280" y="102" text-anchor="middle">text → numbers</text>
+              <text class="mono" x="280" y="158" text-anchor="middle">[0.12, −0.40, 0.83, …]</text>
+              <text class="s" x="280" y="176" text-anchor="middle">the question's coordinates</text>
+            </g>
+
+            <!-- Step 3: search -->
+            <g class="st on" data-step="3">
+              <line class="edge flow" x1="350" y1="90" x2="387" y2="90" marker-end="url(#ah2)"/>
+              <rect class="glow" x="386" y="16" width="228" height="208" rx="12"/>
+              <line class="link" x1="512" y1="176" x2="500" y2="150"/>
+              <line class="link" x1="512" y1="176" x2="532" y2="176"/>
+              <line class="link" x1="512" y1="176" x2="485" y2="196"/>
+              <circle class="pt hit" cx="500" cy="150" r="7"/><circle class="pt hit" cx="532" cy="176" r="7"/><circle class="pt hit" cx="485" cy="196" r="7"/>
+              <polygon class="q" points="512,166 522,176 512,186 502,176"/>
+              <text class="lbl acc" x="500" y="240" text-anchor="middle">3 nearest · published in last 30 days</text>
+            </g>
+
+            <!-- Step 4: build prompt -->
+            <g class="st on" data-step="4">
+              <line class="edge flow" x1="610" y1="120" x2="647" y2="120" marker-end="url(#ah2)"/>
+              <rect class="glow" x="646" y="16" width="238" height="208" rx="12"/>
+              <rect class="rule" x="662" y="52" width="206" height="28" rx="5"/>
+              <text class="s" x="672" y="70" style="fill:var(--warn)">Rules: use only these, cite [n]</text>
+              <rect class="slip" x="662" y="86" width="206" height="26" rx="5"/>
+              <text class="s" x="672" y="103">[1] Example Times · 4 Nov</text>
+              <rect class="slip" x="662" y="117" width="206" height="26" rx="5"/>
+              <text class="s" x="672" y="134">[2] Sample Daily · 1 Nov</text>
+              <rect class="slip" x="662" y="148" width="206" height="26" rx="5"/>
+              <text class="s" x="672" y="165">[3] Demo Wire · 29 Oct</text>
+              <rect class="box" x="662" y="181" width="206" height="28" rx="5"/>
+              <text class="s" x="672" y="199">Question: What did the RBI…</text>
+            </g>
+
+            <!-- Step 5: LLM -->
+            <g class="st on" data-step="5">
+              <line class="edge flow" x1="765" y1="222" x2="765" y2="259" marker-end="url(#ah2)"/>
+              <rect class="glow" x="646" y="258" width="238" height="88" rx="12"/>
+            </g>
+
+            <!-- Step 6: answer -->
+            <g class="st on" data-step="6">
+              <line class="edge flow" x1="650" y1="302" x2="613" y2="302" marker-end="url(#ah2)"/>
+              <rect class="glow" x="16" y="258" width="598" height="108" rx="12"/>
+              <text class="ans" x="40" y="292">The RBI kept its key interest rate unchanged <tspan class="cite">[1]</tspan> and said</text>
+              <text class="ans" x="40" y="311">inflation is expected to keep easing <tspan class="cite">[2]</tspan>.</text>
+              <rect class="chipr" x="40" y="326" width="160" height="24" rx="12"/>
+              <text class="chipt" x="120" y="342" text-anchor="middle">[1] Example Times ↗</text>
+              <rect class="chipr" x="210" y="326" width="160" height="24" rx="12"/>
+              <text class="chipt" x="290" y="342" text-anchor="middle">[2] Sample Daily ↗</text>
+            </g>
+          </svg>
+        </div>
+        <div class="anim-controls">
+          <button type="button" class="btn primary" id="a-play">Play</button>
+          <button type="button" class="btn" id="a-prev">Back</button>
+          <button type="button" class="btn" id="a-next">Next</button>
+          <div class="stepbtns" role="group" aria-label="Jump to a step">
+            <button type="button" class="stepbtn" data-go="1" aria-label="Step 1">1</button>
+            <button type="button" class="stepbtn" data-go="2" aria-label="Step 2">2</button>
+            <button type="button" class="stepbtn" data-go="3" aria-label="Step 3">3</button>
+            <button type="button" class="stepbtn" data-go="4" aria-label="Step 4">4</button>
+            <button type="button" class="stepbtn" data-go="5" aria-label="Step 5">5</button>
+            <button type="button" class="stepbtn" data-go="6" aria-label="Step 6">6</button>
+          </div>
+        </div>
+        <p class="anim-cap" id="a-cap" aria-live="polite"></p>
+      </figure>
+
+      <h3>What RAG adds</h3>
+      <figure>
+        <div class="frame">
+          <svg class="arch" viewBox="0 0 900 250" role="img" aria-label="Without RAG, the question goes straight to the LLM and comes back as an unsourced guess. With RAG, a search step over your news database sits in between, so the LLM writes from real clippings and the answer has links.">
+            <defs>
+              <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+            <text class="lane" x="30" y="30">WITHOUT RAG</text>
+            <rect class="box" x="30" y="50" width="120" height="56" rx="8"/>
+            <text class="t" x="90" y="83" text-anchor="middle">Question</text>
+            <line class="edge" x1="150" y1="78" x2="188" y2="78" marker-end="url(#ah3)"/>
+            <rect class="box" x="190" y="50" width="140" height="56" rx="8"/>
+            <text class="t" x="260" y="74" text-anchor="middle">LLM alone</text>
+            <text class="s" x="260" y="92" text-anchor="middle">old training data</text>
+            <line class="edge" x1="260" y1="106" x2="260" y2="138" marker-end="url(#ah3)"/>
+            <rect class="box" x="190" y="140" width="140" height="56" rx="8"/>
+            <text class="t" x="260" y="164" text-anchor="middle">Answer</text>
+            <text class="s bad" x="260" y="182" text-anchor="middle">confident guess</text>
+            <text class="lbl bad" x="30" y="226">No sources. Knows nothing from after its training.</text>
+
+            <line x1="450" y1="20" x2="450" y2="230" stroke="var(--rule)" stroke-width="1"/>
+
+            <text class="lane" x="480" y="30">WITH RAG</text>
+            <rect class="box" x="480" y="50" width="100" height="56" rx="8"/>
+            <text class="t" x="530" y="83" text-anchor="middle">Question</text>
+            <line class="edge" x1="580" y1="78" x2="608" y2="78" marker-end="url(#ah3)"/>
+            <rect class="box key" x="610" y="50" width="120" height="56" rx="8"/>
+            <text class="t" x="670" y="74" text-anchor="middle">Search news</text>
+            <text class="s" x="670" y="92" text-anchor="middle">your Qdrant DB</text>
+            <line class="edge acc" x1="730" y1="78" x2="758" y2="78" marker-end="url(#ah3)"/>
+            <text class="lbl acc" x="744" y="44" text-anchor="middle">clippings</text>
+            <rect class="box" x="760" y="50" width="120" height="56" rx="8"/>
+            <text class="t" x="820" y="74" text-anchor="middle">LLM</text>
+            <text class="s" x="820" y="92" text-anchor="middle">+ clippings + rules</text>
+            <line class="edge" x1="820" y1="106" x2="820" y2="138" marker-end="url(#ah3)"/>
+            <rect class="box" x="760" y="140" width="120" height="56" rx="8"/>
+            <text class="t" x="820" y="164" text-anchor="middle">Answer</text>
+            <text class="s goodt" x="820" y="182" text-anchor="middle">with links</text>
+            <text class="lbl goodt" x="480" y="226">Fresh, checkable, and says "I don't know" when it should.</text>
+          </svg>
+        </div>
+        <figcaption>The only new piece is the blue search step. The LLM is the same in both; RAG changes what you hand it.</figcaption>
+      </figure>
+    </section>
+
+    <section id="overview">
+      <div class="eyebrow">The big picture</div>
+      <h2>Two programs that share a database</h2>
+      <div class="prose">
+        <p>The PRD lists seven modules, but there are really two independent programs. Seeing them separately is the most useful thing you can do before writing code.</p>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3>The ingestion pipeline (Modules 1–5)</h3>
+          <p>A background job. Nobody talks to it. Once a day it fetches feeds, cleans articles, drops duplicates, turns text into vectors, stores them, and deletes anything older than 30 days.</p>
+          <p class="analogy"><b>Think of it as</b> a nightly ETL batch job, like a Spring <code>@Scheduled</code> task or a node-cron script.</p>
+        </div>
+        <div class="card">
+          <h3>The chat app (Modules 6–7)</h3>
+          <p>A normal web app. A React UI calls a FastAPI endpoint, which searches the vector DB, sends the hits to an LLM, and streams an answer with source links back.</p>
+          <p class="analogy"><b>Think of it as</b> a REST API with one smart endpoint, plus a chat UI you already know how to build.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <p><b>Why this matters.</b> The PRD's scalability section says to avoid coupling ingestion with the chatbot. If they only share Qdrant (and Postgres), you can build, test and demo each half on its own. You'll start with a tiny version of both halves, then grow them one version at a time (see "Build it in versions").</p>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="eyebrow">Architecture</div>
+      <h2>How data moves through the system</h2>
+      <figure>
+        <div class="frame">
+          <svg class="arch" viewBox="0 0 1000 530" role="img" aria-label="Ingestion runs daily from RSS feeds through fetch, clean, dedup and embed into Qdrant; a cleanup job deletes expired points; the chat path embeds the question, searches Qdrant with a 30-day publication date filter, and sends hits to the LLM, which streams an answer with sources back to the UI.">
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head acc" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+
+            <text class="lane" x="20" y="28">INGESTION · RUNS DAILY ON A SCHEDULE</text>
+            <rect class="box" x="20" y="40" width="140" height="60" rx="6"/>
+            <text class="t" x="90" y="66" text-anchor="middle">RSS feeds</text>
+            <text class="s" x="90" y="84" text-anchor="middle">listed in feeds.yaml</text>
+            <rect class="box" x="190" y="40" width="140" height="60" rx="6"/>
+            <text class="t" x="260" y="66" text-anchor="middle">Fetch</text>
+            <text class="s" x="260" y="84" text-anchor="middle">feedparser + retry</text>
+            <rect class="box" x="360" y="40" width="140" height="60" rx="6"/>
+            <text class="t" x="430" y="66" text-anchor="middle">Clean &amp; validate</text>
+            <text class="s" x="430" y="84" text-anchor="middle">strip HTML, UTC dates</text>
+            <rect class="box" x="530" y="40" width="140" height="60" rx="6"/>
+            <text class="t" x="600" y="66" text-anchor="middle">Deduplicate</text>
+            <text class="s" x="600" y="84" text-anchor="middle">URL · GUID · similarity</text>
+            <rect class="box" x="700" y="40" width="140" height="60" rx="6"/>
+            <text class="t" x="770" y="66" text-anchor="middle">Chunk &amp; embed</text>
+            <text class="s" x="770" y="84" text-anchor="middle">embedding model</text>
+            <line class="edge" x1="160" y1="70" x2="188" y2="70" marker-end="url(#ah)"/>
+            <line class="edge" x1="330" y1="70" x2="358" y2="70" marker-end="url(#ah)"/>
+            <line class="edge" x1="500" y1="70" x2="528" y2="70" marker-end="url(#ah)"/>
+            <line class="edge" x1="670" y1="70" x2="698" y2="70" marker-end="url(#ah)"/>
+
+            <text class="lane" x="20" y="255">SHARED STORES</text>
+            <text class="lbl" x="20" y="274">the only link between</text>
+            <text class="lbl" x="20" y="290">the two programs</text>
+            <rect class="box" x="260" y="220" width="200" height="80" rx="6"/>
+            <text class="t" x="360" y="252" text-anchor="middle">PostgreSQL</text>
+            <text class="s" x="360" y="272" text-anchor="middle">articles, run logs, chats</text>
+            <rect class="box key" x="520" y="220" width="240" height="80" rx="6"/>
+            <text class="t" x="640" y="252" text-anchor="middle">Qdrant · news_chunks</text>
+            <text class="s" x="640" y="272" text-anchor="middle">vector + payload metadata</text>
+            <rect class="box key" x="850" y="220" width="140" height="80" rx="6"/>
+            <text class="t" x="920" y="252" text-anchor="middle">Cleanup job</text>
+            <text class="s" x="920" y="272" text-anchor="middle">daily, after ingestion</text>
+
+            <line class="edge" x1="260" y1="100" x2="320" y2="218" marker-end="url(#ah)"/>
+            <text class="lbl" x="282" y="168" text-anchor="end">run log</text>
+            <line class="edge" x1="575" y1="100" x2="430" y2="218" marker-end="url(#ah)"/>
+            <text class="lbl" x="488" y="150" text-anchor="end">seen this URL?</text>
+            <line class="edge" x1="740" y1="100" x2="740" y2="218" marker-end="url(#ah)"/>
+            <text class="lbl" x="750" y="165">upsert points</text>
+            <line class="edge acc" x1="848" y1="260" x2="763" y2="260" marker-end="url(#aha)"/>
+            <text class="lbl acc" x="805" y="250" text-anchor="middle">delete</text>
+            <text class="lbl acc" x="805" y="280" text-anchor="middle">expired</text>
+
+            <text class="lane" x="20" y="388">CHAT · RUNS FOR EACH QUESTION</text>
+            <rect class="box" x="20" y="400" width="140" height="60" rx="6"/>
+            <text class="t" x="90" y="426" text-anchor="middle">Chat UI</text>
+            <text class="s" x="90" y="444" text-anchor="middle">React</text>
+            <rect class="box" x="190" y="400" width="140" height="60" rx="6"/>
+            <text class="t" x="260" y="426" text-anchor="middle">FastAPI /chat</text>
+            <text class="s" x="260" y="444" text-anchor="middle">validate, rate-limit</text>
+            <rect class="box" x="360" y="400" width="140" height="60" rx="6"/>
+            <text class="t" x="430" y="426" text-anchor="middle">Embed question</text>
+            <text class="s" x="430" y="444" text-anchor="middle">same model as articles</text>
+            <rect class="box key" x="530" y="400" width="140" height="60" rx="6"/>
+            <text class="t" x="600" y="426" text-anchor="middle">Vector search</text>
+            <text class="s" x="600" y="444" text-anchor="middle">top-k + date filter</text>
+            <rect class="box" x="700" y="400" width="140" height="60" rx="6"/>
+            <text class="t" x="770" y="426" text-anchor="middle">LLM</text>
+            <text class="s" x="770" y="444" text-anchor="middle">grounded prompt</text>
+            <line class="edge" x1="160" y1="430" x2="188" y2="430" marker-end="url(#ah)"/>
+            <line class="edge" x1="330" y1="430" x2="358" y2="430" marker-end="url(#ah)"/>
+            <line class="edge" x1="500" y1="430" x2="528" y2="430" marker-end="url(#ah)"/>
+            <line class="edge" x1="670" y1="430" x2="698" y2="430" marker-end="url(#ah)"/>
+
+            <line class="edge acc" x1="600" y1="303" x2="600" y2="397" marker-start="url(#aha)" marker-end="url(#aha)"/>
+            <text class="lbl acc" x="612" y="342">filter: published_at ≥ now − 30 days</text>
+            <text class="lbl" x="612" y="358">returns top-k chunks + metadata</text>
+
+            <polyline class="edge" points="770,460 770,495 90,495 90,463" marker-end="url(#ah)"/>
+            <text class="lbl" x="430" y="518" text-anchor="middle">streamed answer with source links, publishers and dates</text>
+          </svg>
+        </div>
+        <figcaption>The 30-day rule is enforced twice, both in blue: the search filter guarantees no old article is ever retrieved, and the cleanup job removes old points from storage. Evaluators will test both (mandatory tests 7 and 8).</figcaption>
+      </figure>
+    </section>
+
+    <section id="concepts">
+      <div class="eyebrow">Concepts to learn</div>
+      <h2>Five ideas the whole project rests on</h2>
+      <div class="prose"><p>You'll be asked to explain these in the demo (5% of the marks is "understanding of architecture"). Learn them before writing the RAG code.</p></div>
+      <div class="grid3">
+        <div class="card">
+          <h3>Embedding</h3>
+          <p>A model turns text into a fixed-length list of floats, for example 768 numbers. Texts with similar meaning produce vectors that sit close together.</p>
+          <p class="analogy"><b>Like a hash function</b>, except similar inputs land near each other instead of far apart.</p>
+        </div>
+        <div class="card">
+          <h3>Vector database</h3>
+          <p>Stores vectors and finds the nearest ones to a query vector quickly. Each vector carries a JSON payload you can filter on.</p>
+          <p class="analogy"><b>Like a table</b> whose index answers "most similar" instead of "equal to". Payload filters work like a <code>WHERE</code> clause.</p>
+        </div>
+        <div class="card">
+          <h3>Chunking</h3>
+          <p>Long articles are split into pieces of a few hundred words with a little overlap. Each chunk becomes its own point, with the parent article's metadata copied onto it.</p>
+          <p class="analogy"><b>Why:</b> one vector for a 2,000-word article blurs its meaning; smaller chunks match questions more precisely.</p>
+        </div>
+        <div class="card">
+          <h3>RAG</h3>
+          <p>Retrieval-Augmented Generation: search first, then give the LLM the found text and tell it to answer only from that. The LLM writes; your database supplies the facts.</p>
+          <p class="analogy"><b>Like an open-book exam</b> where the model may only quote the pages you handed it.</p>
+        </div>
+        <div class="card">
+          <h3>Metadata filtering</h3>
+          <p>Restricting a vector search by payload fields, here <code>published_at</code>. Qdrant applies the filter during the search, so you still get the top-k results inside the window.</p>
+          <p class="analogy"><b>Store dates as integers</b> (Unix seconds) so range filters like ≥ and &lt; work.</p>
+        </div>
+        <div class="card">
+          <h3>Grounding</h3>
+          <p>Every claim in an answer should trace to a retrieved chunk. If the search finds nothing relevant, say so instead of letting the LLM guess.</p>
+          <p class="analogy"><b>Practical check:</b> if the best similarity score is below a threshold, skip the LLM and return "not enough information".</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="stack">
+      <div class="eyebrow">Stack</div>
+      <h2>The recommended stack, mapped to what you know</h2>
+      <div class="prose"><p>Python will be new to you, but most of it lines up with Java and TypeScript ideas you already have. Spend two or three days on Python basics before Week 1.</p></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Need</th><th>Use</th><th>Your equivalent</th><th>Why this choice</th></tr></thead>
+          <tbody>
+            <tr><td>Web API</td><td>FastAPI</td><td>Express / Spring Boot controllers</td><td>Async, auto-generates Swagger docs at <code>/docs</code>, which covers the API documentation deliverable.</td></tr>
+            <tr><td>Request models</td><td>Pydantic</td><td>Zod schemas / Java DTOs with validation</td><td>Input validation comes free, as the security section asks.</td></tr>
+            <tr><td>Packages</td><td>uv or pip + venv</td><td>npm + node_modules</td><td><code>pyproject.toml</code> is your <code>package.json</code>.</td></tr>
+            <tr><td>RSS parsing</td><td>feedparser</td><td>rss-parser (npm)</td><td>Handles the many RSS and Atom variants and messy dates.</td></tr>
+            <tr><td>Full article text</td><td>trafilatura</td><td>Mozilla Readability</td><td>Extracts main text from a page; check robots.txt first and fall back to the feed summary.</td></tr>
+            <tr><td>Embeddings</td><td>Gemini embeddings or sentence-transformers</td><td>an API call / a local library</td><td>Gemini has a free tier; sentence-transformers runs locally with no key. Pick one and never mix models in one collection.</td></tr>
+            <tr><td>Vector DB</td><td>Qdrant (Docker locally, Qdrant Cloud free tier for deploy)</td><td>a database with a similarity index</td><td>Strong payload filtering and delete-by-filter, which Modules 3 and 5 need.</td></tr>
+            <tr><td>LLM</td><td>A current Gemini Flash model</td><td>an HTTP API call</td><td>Fast, cheap, supports streaming.</td></tr>
+            <tr><td>Scheduler</td><td>APScheduler</td><td>Spring <code>@Scheduled</code> / node-cron</td><td>Runs in-process; simpler than Celery for one daily job.</td></tr>
+            <tr><td>Relational DB</td><td>PostgreSQL + SQLAlchemy</td><td>JPA / TypeORM</td><td>Article registry, ingestion logs, chat history. SQLite is fine on day one.</td></tr>
+            <tr><td>Tests</td><td>pytest</td><td>JUnit / Jest</td><td>Needed for the testing report.</td></tr>
+            <tr><td>Frontend</td><td>React + Vite + TypeScript</td><td>what you already use</td><td>Next.js is optional; a Vite SPA is enough and simpler.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="max-width:72ch">Keep API keys in a <code>.env</code> file read by <code>pydantic-settings</code>, add <code>.env</code> to <code>.gitignore</code>, and only call the LLM from the backend.</p>
+    </section>
+
+    <section id="data">
+      <div class="eyebrow">Data model</div>
+      <h2>What gets stored, and where</h2>
+      <div class="grid2">
+        <div class="card">
+          <h3>Qdrant point (one per chunk)</h3>
+<pre><code>id:      uuid5(article_id, chunk_index)
+vector:  [0.013, -0.27, ...]   # e.g. 768 floats
+payload: {
+  "article_id":   "sha256 of normalized URL",
+  "chunk_index":  0,
+  "title":        "...",
+  "content":      "chunk text",
+  "publisher":    "The Hindu",
+  "category":     "Business",
+  "article_url":  "https://...",
+  "published_at": 1762300800,   # int, UTC
+  "ingested_at":  1762387200
+}</code></pre>
+          <p class="muted">Every chunk carries <code>published_at</code>, so one delete-by-filter removes all of an article's chunks at once, as Module 5 requires.</p>
+        </div>
+        <div class="card">
+          <h3>Postgres tables</h3>
+<pre><code>articles(
+  article_id PK, url UNIQUE, guid,
+  content_hash, title, publisher,
+  published_at, ingested_at,
+  chunk_count, status
+)
+ingest_runs(
+  id, started_at, finished_at,
+  feed, fetched, new, skipped,
+  failed, error
+)
+cleanup_runs(id, ran_at, cutoff, deleted)
+chats(id, created_at, title)
+messages(id, chat_id, role,
+         content, sources_json)</code></pre>
+          <p class="muted">The <code>articles</code> table gives a fast "have I seen this?" check before any embedding is paid for. The run tables are your ingestion and cleanup logs.</p>
+        </div>
+      </div>
+      <div class="grid3">
+        <div class="card"><h3>Dedup level 1: URL</h3><p>Normalize the URL (lowercase host, drop <code>utm_*</code> and fragments), hash it, look it up. Catches the same story fetched twice.</p></div>
+        <div class="card"><h3>Dedup level 2: GUID and content hash</h3><p>Compare the feed's GUID and a hash of the cleaned title + description. Catches the same article at a slightly different URL.</p></div>
+        <div class="card"><h3>Dedup level 3: similarity</h3><p>After embedding, search Qdrant for a very close match (cosine above about 0.95) from the last few days. Catches syndicated copies across publishers.</p></div>
+      </div>
+    </section>
+
+    <section id="retention">
+      <div class="eyebrow">The 30-day window</div>
+      <h2>Which articles survive today's cleanup?</h2>
+      <div class="prose">
+        <p>Change the date to see the window move. The rows are made-up sample articles chosen to show the edge cases.</p>
+      </div>
+      <div class="widget">
+        <div class="controls">
+          <div class="field">
+            <label for="today">Today (UTC)</label>
+            <input type="date" id="today" value="2026-11-05">
+          </div>
+          <div class="field">
+            <span id="mode-label">Cutoff rule</span>
+            <div class="seg" role="group" aria-labelledby="mode-label">
+              <button type="button" id="mode-month" aria-pressed="true">Same date last month (PRD example)</button>
+              <button type="button" id="mode-30" aria-pressed="false">Exactly 30 days</button>
+            </div>
+          </div>
+        </div>
+        <p class="cutoff-line" id="cutoff-line"></p>
+        <div class="timeline" id="timeline" aria-hidden="true"></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Sample article</th><th>Published</th><th>Ingested</th><th>Result</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="note">The PRD's example (today 2 November keeps 2 October) is a calendar month back, which is 31 days in that case, while "30 days" would drop 2 October. Pick one rule, write it in your docs, and put it in a single function that both the search filter and the cleanup job call.</p>
+      </div>
+    </section>
+
+    <section id="rag">
+      <div class="eyebrow">How a question is answered</div>
+      <h2>The chat endpoint, step by step</h2>
+      <div class="grid2">
+        <div class="card">
+          <h3>Retrieve with the date filter</h3>
+<pre><code>from qdrant_client import models
+
+cutoff = retention_cutoff(now_utc())  # one shared function
+hits = qdrant.query_points(
+    collection_name="news_chunks",
+    query=embed(question),
+    limit=8,
+    query_filter=models.Filter(must=[
+        models.FieldCondition(
+            key="published_at",
+            range=models.Range(gte=int(cutoff.timestamp())),
+        )
+    ]),
+    with_payload=True,
+).points
+
+if not hits or hits[0].score &lt; MIN_SCORE:
+    return NO_INFO_ANSWER</code></pre>
+        </div>
+        <div class="card">
+          <h3>Prompt the LLM to stay grounded</h3>
+<pre><code>SYSTEM = """You are a news assistant.
+Answer ONLY from the numbered sources below.
+Cite sources as [1], [2] after each claim.
+Mention publication dates when relevant.
+If the sources do not answer the question,
+say you don't have enough recent news on it.
+Never invent events, numbers or quotes."""
+
+context = "\n\n".join(
+  f"[{i}] {h.payload['title']} "
+  f"({h.payload['publisher']}, {date(h)})\n"
+  f"{h.payload['content']}"
+  for i, h in enumerate(hits, 1))</code></pre>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h3>Cleanup job</h3>
+<pre><code>qdrant.delete(
+    collection_name="news_chunks",
+    points_selector=models.FilterSelector(
+        filter=models.Filter(must=[
+            models.FieldCondition(
+                key="published_at",
+                range=models.Range(lt=cutoff_ts),
+            )
+        ])
+    ),
+)
+# then delete the same rows from Postgres
+# and insert a cleanup_runs log row</code></pre>
+        </div>
+        <div class="card">
+          <h3>Streaming and sources</h3>
+          <p>Return a <code>StreamingResponse</code> using Server-Sent Events. Send the sources list first as one event, then the answer tokens, so the UI can render source cards right away.</p>
+          <p>Create a payload index on <code>published_at</code> (type integer) when you create the collection, so date filtering stays fast as the collection grows.</p>
+          <p class="muted">For follow-up questions, rewrite the latest question into a standalone one using the last few messages before embedding it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="plan">
+      <div class="eyebrow">Build it in versions</div>
+      <h2>Start tiny, then grow it seven times</h2>
+      <div class="prose">
+        <p>You don't have to build the whole PRD at once. Each version below is a complete program that runs and does something useful, and each adds one or two new ideas. By v6 you've built everything the PRD asks for, and you understand every piece because you added it yourself.</p>
+        <p>v0 to v2 fit in Week 1, so you still finish inside the PRD's 4 weeks. Commit to GitHub after each version: a history like "v0: RAG in one file" through "v6: deployed" shows evaluators how your understanding grew.</p>
+      </div>
+
+      <div class="tablewrap">
+        <table class="matrix" id="matrix">
+          <thead><tr><th>What exists</th><th class="c">v0</th><th class="c">v1</th><th class="c">v2</th><th class="c">v3</th><th class="c">v4</th><th class="c">v5</th><th class="c">v6</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><i class="new"></i> added in this version</span>
+        <span><i class="yes"></i> already there</span>
+        <span><i class="no"></i> not yet</span>
+      </div>
+
+      <div class="card">
+        <h3>v0 in full: the whole RAG idea in one file</h3>
+        <p class="muted">Three fake news items, no database, no web server. Run it, read the similarity scores it prints, then try the experiments below the code.</p>
+<pre><code># rag_v0.py: the whole RAG idea in about 40 lines
+# Setup:  pip install google-genai numpy
+#         set the GEMINI_API_KEY environment variable (from Google AI Studio)
+import numpy as np
+from google import genai
+
+client = genai.Client()                  # reads GEMINI_API_KEY
+EMBED_MODEL = "gemini-embedding-001"     # check current model names in Google AI Studio
+CHAT_MODEL = "gemini-2.5-flash"
+
+# 1. Our "database": a few sample news items
+news = [
+    {"title": "Sample: Central bank keeps interest rate unchanged", "url": "https://example.com/1",
+     "text": "The central bank held its key lending rate steady, saying inflation is easing."},
+    {"title": "Sample: Chipmaker announces new AI processor", "url": "https://example.com/2",
+     "text": "A chip company unveiled a processor designed for training AI models."},
+    {"title": "Sample: India wins the cricket series 3-1", "url": "https://example.com/3",
+     "text": "India won the final match by six wickets to take the series."},
+]
+
+def embed(texts):
+    """Turn a list of texts into a list of number-lists (vectors)."""
+    result = client.models.embed_content(model=EMBED_MODEL, contents=texts)
+    return [np.array(e.values) for e in result.embeddings]
+
+def similarity(a, b):
+    """Cosine similarity: close to 1 means 'about the same thing'."""
+    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+# 2. "Ingestion": turn every article into numbers, once
+news_vectors = embed([n["title"] + ". " + n["text"] for n in news])
+
+# 3. "Retrieval": score every article against the question
+question = "What did the central bank decide about rates?"
+q_vec = embed([question])[0]
+scored = sorted(
+    ((similarity(q_vec, v), n) for n, v in zip(news, news_vectors)),
+    key=lambda pair: pair[0], reverse=True,
+)
+for score, n in scored:
+    print(f"{score:.3f}  {n['title']}")      # look at these numbers!
+top = [n for score, n in scored[:2]]
+
+# 4. "Generation": hand the clippings to the LLM with strict rules
+clippings = "\n".join(f"[{i}] {n['title']}: {n['text']} ({n['url']})"
+                      for i, n in enumerate(top, 1))
+prompt = f"""Answer using ONLY the numbered news below. Cite sources like [1].
+If the news does not answer the question, say you don't have that information.
+
+{clippings}
+
+Question: {question}"""
+
+answer = client.models.generate_content(model=CHAT_MODEL, contents=prompt)
+print("\n" + answer.text)</code></pre>
+        <p><b>Experiments that teach you RAG:</b></p>
+        <ul style="margin:0; padding-left:20px; display:grid; gap:4px">
+          <li>Ask about cricket. Watch the scores reorder.</li>
+          <li>Ask "Will it rain tomorrow?" The scores are all low and the answer should be "I don't have that information". That's the PRD's test 10.</li>
+          <li>Delete the "ONLY" rule from the prompt and ask about something not in the list. See the LLM make things up. That's why the rule exists.</li>
+          <li>Ask using different words ("Did borrowing costs change?"). It still finds the central bank item, which keyword search wouldn't.</li>
+        </ul>
+      </div>
+
+      <div class="weeks" id="weeks">
+        <div class="week">
+          <div class="week-head"><h3>v0 · RAG in one file</h3><span class="tag">Week 1 · 1–2 days</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v0-1"><span>Install Python, create a virtual environment, get a Gemini API key</span></label></li>
+              <li><label><input type="checkbox" id="v0-2"><span>Run <code>rag_v0.py</code> above and read the printed scores</span></label></li>
+              <li><label><input type="checkbox" id="v0-3"><span>Do all four experiments and write one line in your notes about each</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>What an embedding is, by seeing one</li><li>How "search by meaning" is just a similarity score</li><li>Why the prompt rules matter</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v1 · Real news, still in memory</h3><span class="tag">Week 1 · 1 day</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v1-1"><span>Replace the hard-coded list with 2–3 real RSS feeds using <code>feedparser</code></span></label></li>
+              <li><label><input type="checkbox" id="v1-2"><span>Strip HTML from summaries; keep title, summary, link, publisher, date</span></label></li>
+              <li><label><input type="checkbox" id="v1-3"><span>Ask the PRD's example questions in a loop with <code>input()</code></span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>What RSS gives you (and doesn't)</li><li>Why cleaning text matters</li></ul><span class="k">PRD</span><ul><li>Module 1, part of Module 2</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v2 · Store vectors in Qdrant</h3><span class="tag">Week 1 · 2 days</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v2-1"><span>Run Qdrant in Docker; create a collection</span></label></li>
+              <li><label><input type="checkbox" id="v2-2"><span>Split the script in two: <code>ingest.py</code> (fetch, embed, save) and <code>ask.py</code> (search, answer)</span></label></li>
+              <li><label><input type="checkbox" id="v2-3"><span>Save title, link, publisher and <code>published_at</code> as payload; replace your <code>similarity()</code> loop with Qdrant's search</span></label></li>
+              <li><label><input type="checkbox" id="v2-4"><span>Open the Qdrant dashboard and look at your stored points</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>What a vector database does for you</li><li>Why ingestion and chat are separate programs</li></ul><span class="k">PRD</span><ul><li>Module 3 · test 4</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v3 · A real chat app</h3><span class="tag">Week 2 · 3 days</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v3-1"><span>Wrap <code>ask.py</code> in FastAPI: <code>POST /api/chat</code> returns <code>{answer, sources}</code></span></label></li>
+              <li><label><input type="checkbox" id="v3-2"><span>Simple React page: input box, message list, source links under each answer</span></label></li>
+              <li><label><input type="checkbox" id="v3-3"><span>Keep the API key in a <code>.env</code> file on the backend only</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>That the AI part is "just" one API endpoint</li></ul><span class="k">PRD</span><ul><li>Modules 6–7 basics · tests 5, 6</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v4 · Trustworthy answers</h3><span class="tag">Week 2 · 2 days</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v4-1"><span>Add the 30-day filter on <code>published_at</code> to every search</span></label></li>
+              <li><label><input type="checkbox" id="v4-2"><span>If the best score is below a threshold, answer "not enough information" without calling the LLM</span></label></li>
+              <li><label><input type="checkbox" id="v4-3"><span>Skip articles whose link is already stored (first deduplication)</span></label></li>
+              <li><label><input type="checkbox" id="v4-4"><span>Normalize all dates to UTC; decide what to do when a date is missing</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>Metadata filtering</li><li>How to stop hallucinations in practice</li></ul><span class="k">PRD</span><ul><li>Module 2, Module 6 · tests 2, 7, 10</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v5 · Runs by itself</h3><span class="tag">Week 3</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v5-1"><span>Move <code>ingest.py</code> into an APScheduler daily job, with retries and per-feed error handling</span></label></li>
+              <li><label><input type="checkbox" id="v5-2"><span>Add the cleanup job that deletes points older than the cutoff</span></label></li>
+              <li><label><input type="checkbox" id="v5-3"><span>Postgres tables for articles and run logs</span></label></li>
+              <li><label><input type="checkbox" id="v5-4"><span>Chunk long articles; fetch full text where allowed; add more feeds and categories via <code>feeds.yaml</code></span></label></li>
+              <li><label><input type="checkbox" id="v5-5"><span>Deduplicate by GUID and content hash</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>Background jobs and failure handling</li><li>Why chunk size changes answer quality</li></ul><span class="k">PRD</span><ul><li>Modules 4–5 · tests 1, 3, 8, 9</li></ul></div>
+          </div>
+        </div>
+        <div class="week">
+          <div class="week-head"><h3>v6 · The full PRD</h3><span class="tag">Week 4</span><span class="progress"></span></div>
+          <div class="week-body">
+            <ul class="tasks">
+              <li><label><input type="checkbox" id="v6-1"><span>Stream answers word by word (Server-Sent Events)</span></label></li>
+              <li><label><input type="checkbox" id="v6-2"><span>New chat, chat history, suggested questions, loading and error states, mobile layout</span></label></li>
+              <li><label><input type="checkbox" id="v6-3"><span>Rate limiting, input validation, near-duplicate detection by similarity</span></label></li>
+              <li><label><input type="checkbox" id="v6-4"><span>Deploy, then write README, API docs, architecture diagram and testing report</span></label></li>
+              <li><label><input type="checkbox" id="v6-5"><span>Rehearse the demo against all 10 mandatory tests</span></label></li>
+            </ul>
+            <div class="done-when"><span class="k">You'll learn</span><ul><li>What turns a demo into a product</li></ul><span class="k">PRD</span><ul><li>Everything · all 10 tests</li></ul></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="structure">
+      <div class="eyebrow">Repo layout</div>
+      <h2>A structure that keeps the two programs apart</h2>
+<pre><code>news_bot/
+├── backend/
+│   ├── app/
+│   │   ├── main.py            # FastAPI app, routes, starts scheduler
+│   │   ├── config.py          # env vars via pydantic-settings
+│   │   ├── feeds.yaml         # add or remove RSS sources here
+│   │   ├── ingestion/         # fetcher.py, cleaner.py, dedup.py, pipeline.py
+│   │   ├── vector/            # embedder.py, chunker.py, store.py (Qdrant)
+│   │   ├── rag/               # retriever.py, prompt.py, chat.py
+│   │   ├── jobs/              # scheduler.py, cleanup.py, retention.py
+│   │   └── db/                # SQLAlchemy models, session
+│   ├── tests/                 # pytest, one file per module
+│   └── pyproject.toml
+├── frontend/                  # Vite + React + TypeScript
+├── docs/                      # PRD, architecture, testing report
+├── docker-compose.yml         # qdrant + postgres for local dev
+└── README.md</code></pre>
+    </section>
+
+    <section id="tests">
+      <div class="eyebrow">Tests and marks</div>
+      <h2>Where the marks are</h2>
+      <div class="grid2">
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Area</th><th class="num">Weight</th></tr></thead>
+            <tbody>
+              <tr><td><span class="bar" style="width:80px"></span>RAG architecture &amp; retrieval accuracy</td><td class="num">20%</td></tr>
+              <tr><td><span class="bar" style="width:60px"></span>Embedding &amp; vector DB</td><td class="num">15%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>RSS integration &amp; extraction</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>Cleaning &amp; deduplication</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>Automated ingestion</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>30-day retention &amp; cleanup</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>Frontend &amp; UX</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:40px"></span>Code quality, docs, deployment</td><td class="num">10%</td></tr>
+              <tr><td><span class="bar" style="width:20px"></span>Understanding of architecture</td><td class="num">5%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th class="num">#</th><th>Mandatory test</th><th>How to show it</th></tr></thead>
+            <tbody>
+              <tr><td class="num">1</td><td>Fetch from multiple feeds</td><td>Run log with per-feed counts</td></tr>
+              <tr><td class="num">2</td><td>No duplicates</td><td>Run ingestion twice; point count unchanged</td></tr>
+              <tr><td class="num">3</td><td>Automatic ingestion</td><td>Scheduler log from an unattended run</td></tr>
+              <tr><td class="num">4</td><td>Embeddings stored</td><td>Qdrant dashboard point + payload</td></tr>
+              <tr><td class="num">5</td><td>Answers from stored news</td><td>Ask a PRD example query</td></tr>
+              <tr><td class="num">6</td><td>Source links</td><td>Click a source card</td></tr>
+              <tr><td class="num">7</td><td>No articles over 30 days</td><td>Seed a 40-day-old point; it's never retrieved</td></tr>
+              <tr><td class="num">8</td><td>Expired data deleted</td><td>Run cleanup; seeded point is gone</td></tr>
+              <tr><td class="num">9</td><td>Bad feeds handled</td><td>Add a broken URL; run completes</td></tr>
+              <tr><td class="num">10</td><td>No-info response</td><td>Ask about something not in the news</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="pitfalls">
+      <div class="eyebrow">Pitfalls</div>
+      <h2>Mistakes that cost marks</h2>
+      <div class="pitfalls">
+        <div class="pitfall"><div><p>Relying on cleanup alone for the 30-day rule.</p><p>Between cleanup runs, old articles can still be retrieved. Always filter at search time too.</p></div></div>
+        <div class="pitfall"><div><p>Storing dates as strings or in local time.</p><p>Range filters need numbers. Convert everything to UTC Unix seconds at ingestion.</p></div></div>
+        <div class="pitfall"><div><p>Using ingestion date where the PRD wants publication date.</p><p>An article published 40 days ago but fetched today must still be excluded. Keep both fields.</p></div></div>
+        <div class="pitfall"><div><p>Deleting the article row but leaving its chunks.</p><p>Copy <code>published_at</code> onto every chunk and delete by filter, not by a list of parent IDs.</p></div></div>
+        <div class="pitfall"><div><p>Embedding before checking for duplicates.</p><p>Do the cheap URL and hash checks first; embedding calls cost time and quota.</p></div></div>
+        <div class="pitfall"><div><p>Changing the embedding model mid-project.</p><p>Vectors from different models can't be compared. Re-create the collection and re-ingest if you switch.</p></div></div>
+        <div class="pitfall"><div><p>Putting the API key in the React app.</p><p>Anything in frontend code is public. The browser only ever talks to your FastAPI backend.</p></div></div>
+        <div class="pitfall"><div><p>Pasting AI-generated code you can't explain.</p><p>The PRD says you'll be asked about every component. Write each module yourself, test it alone, then integrate.</p></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  // ---------- Retention widget ----------
+  var DAY = 86400000;
+  var samples = [
+    { t: "Sample: central bank holds repo rate", p: "Example Business Daily", pub: "2026-11-04", ing: "2026-11-04" },
+    { t: "Sample: chipmaker unveils new AI accelerator", p: "Example Tech Wire", pub: "2026-10-28", ing: "2026-10-28" },
+    { t: "Sample: monsoon session ends in parliament", p: "Example National", pub: "2026-10-15", ing: "2026-10-16" },
+    { t: "Sample: auto sales rise in festive month", p: "Example Markets", pub: "2026-10-06", ing: "2026-10-06" },
+    { t: "Sample: trade talks resume (on the boundary)", p: "Example World", pub: "2026-10-05", ing: "2026-10-05" },
+    { t: "Sample: quarterly GDP estimate released", p: "Example Economy", pub: "2026-10-04", ing: "2026-10-04" },
+    { t: "Sample: old feature fetched late from a slow feed", p: "Example Weekly", pub: "2026-09-20", ing: "2026-11-03", note: "Ingested recently, but publication date decides" },
+    { t: "Sample: entry with no publication date", p: "Example Sports", pub: null, ing: "2026-11-04", note: "Needs your documented missing-date rule" }
+  ];
+  var mode = "month";
+  var todayEl = document.getElementById("today");
+  var btnMonth = document.getElementById("mode-month");
+  var btn30 = document.getElementById("mode-30");
+
+  function parse(s) { var a = s.split("-").map(Number); return Date.UTC(a[0], a[1] - 1, a[2]); }
+  function fmt(ms) { return new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); }
+  function cutoffFor(todayMs) {
+    if (mode === "30") return todayMs - 30 * DAY;
+    var d = new Date(todayMs);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, d.getUTCDate());
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function render() {
+    var todayMs = todayEl.value ? parse(todayEl.value) : parse("2026-11-05");
+    var cut = cutoffFor(todayMs);
+    var days = Math.round((todayMs - cut) / DAY);
+    document.getElementById("cutoff-line").innerHTML =
+      "Keep articles published on or after <b>" + fmt(cut) + "</b> (" + days + " days back). Anything earlier is filtered out of search and deleted by cleanup.";
+
+    var start = todayMs - 60 * DAY, span = 62 * DAY;
+    function pos(ms) { return Math.max(0, Math.min(100, (ms - start) / span * 100)); }
+    var tl = '<div class="expired-zone" style="width:' + pos(cut) + '%"></div>' +
+             '<div class="cut" style="left:' + pos(cut) + '%"></div>' +
+             '<span class="end" style="left:8px">' + fmt(start) + '</span>' +
+             '<span class="end" style="right:8px">' + fmt(todayMs) + ' (today)</span>';
+    var rows = "";
+    samples.forEach(function (s) {
+      var cls, label, pubMs = s.pub ? parse(s.pub) : null;
+      if (pubMs === null) { cls = "flag"; label = "Apply missing-date rule"; }
+      else if (pubMs > todayMs) { cls = "flag"; label = "Future date: check timezone"; }
+      else if (pubMs >= cut) { cls = "keep"; label = "Kept"; }
+      else { cls = "drop"; label = "Expired"; }
+      var dotMs = pubMs === null ? parse(s.ing) : pubMs;
+      tl += '<div class="dot ' + cls + '" style="left:' + pos(dotMs) + '%" title="' + esc(s.t) + '"></div>';
+      rows += "<tr><td>" + esc(s.t) + '<br><span class="muted" style="font-size:0.82rem">' + esc(s.p) +
+              (s.note ? " · " + esc(s.note) : "") + "</span></td><td>" + (s.pub ? fmt(pubMs) : '<span class="muted">missing</span>') +
+              "</td><td>" + fmt(parse(s.ing)) + '</td><td><span class="pill ' + cls + '">' + label + "</span></td></tr>";
+    });
+    document.getElementById("timeline").innerHTML = tl;
+    document.getElementById("rows").innerHTML = rows;
+  }
+  function setMode(m) {
+    mode = m;
+    btnMonth.setAttribute("aria-pressed", String(m === "month"));
+    btn30.setAttribute("aria-pressed", String(m === "30"));
+    render();
+  }
+  todayEl.addEventListener("input", render);
+  btnMonth.addEventListener("click", function () { setMode("month"); });
+  btn30.addEventListener("click", function () { setMode("30"); });
+  render();
+
+  // ---------- RAG animation ----------
+  var caps = [
+    "<b>The visitor asks.</b> They type a question in your React chat page, and it's sent to your FastAPI backend.",
+    "<b>Turn the question into numbers.</b> The backend sends the text to the embedding model, which returns the question's coordinates on the map of meaning.",
+    "<b>Search by meaning.</b> Qdrant finds the stored articles closest to those coordinates, keeping only ones published in the last 30 days. Here, three economy articles; sports and tech are ignored.",
+    "<b>Build the prompt.</b> The backend writes one message containing strict rules, the three clippings numbered [1] to [3], and the question.",
+    "<b>The LLM writes.</b> It doesn't search the internet or your database. It only reads the message you built and writes an answer from it.",
+    "<b>Show the answer.</b> The reply appears in the chat with [1] and [2] markers, each linked to the original article so the visitor can check it."
+  ];
+  var groups = document.querySelectorAll(".anim [data-step]");
+  var stepBtns = document.querySelectorAll(".stepbtn");
+  var capEl = document.getElementById("a-cap");
+  var playBtn = document.getElementById("a-play");
+  var step = 6, timer = null, overviewMode = true;
+  function show(k, overview) {
+    step = k;
+    overviewMode = overview;
+    groups.forEach(function (g) {
+      var n = Number(g.getAttribute("data-step"));
+      g.classList.toggle("on", n <= k);
+      g.classList.toggle("now", !overview && n === k);
+    });
+    stepBtns.forEach(function (b) {
+      if (!overview && Number(b.getAttribute("data-go")) === k) b.setAttribute("aria-current", "step");
+      else b.removeAttribute("aria-current");
+    });
+    capEl.innerHTML = overview
+      ? "All six steps are shown. Press <b>Play</b> to watch a question travel through the system one step at a time."
+      : "Step " + k + " of 6. " + caps[k - 1];
+  }
+  function stop() { if (timer) { clearInterval(timer); timer = null; } playBtn.textContent = step >= 6 ? "Replay" : "Play"; }
+  playBtn.addEventListener("click", function () {
+    if (timer) { stop(); return; }
+    if (step >= 6) show(1, false); else show(step, false);
+    playBtn.textContent = "Pause";
+    timer = setInterval(function () {
+      if (step >= 6) { stop(); return; }
+      show(step + 1, false);
+      if (step >= 6) stop();
+    }, 2800);
+  });
+  document.getElementById("a-next").addEventListener("click", function () { stop(); show(overviewMode ? 1 : Math.min(6, step + 1), false); stop(); });
+  document.getElementById("a-prev").addEventListener("click", function () { stop(); show(overviewMode ? 1 : Math.max(1, step - 1), false); stop(); });
+  stepBtns.forEach(function (b) { b.addEventListener("click", function () { stop(); show(Number(b.getAttribute("data-go")), false); stop(); }); });
+  show(6, true);
+
+  // ---------- Version matrix ----------
+  // [label, first version, last version (inclusive)]
+  var features = [
+    ["Sample news hard-coded in Python", 0, 0],
+    ["Embeddings + similarity search", 0, 6],
+    ["Prompt with rules and citations", 0, 6],
+    ["Real RSS feeds", 1, 6],
+    ["Text cleaning", 1, 6],
+    ["Qdrant vector database", 2, 6],
+    ["FastAPI endpoint + React chat page", 3, 6],
+    ["30-day filter in search", 4, 6],
+    ["\"Not enough information\" reply", 4, 6],
+    ["Deduplication by link", 4, 6],
+    ["Daily scheduled ingestion + retries", 5, 6],
+    ["Cleanup of expired articles", 5, 6],
+    ["Postgres logs, chunking, full text", 5, 6],
+    ["Streaming, chat history, rate limits, deploy", 6, 6]
+  ];
+  var mrows = "";
+  features.forEach(function (f) {
+    mrows += "<tr><td>" + esc(f[0]) + "</td>";
+    for (var v = 0; v <= 6; v++) {
+      var cls = v < f[1] || v > f[2] ? "no" : (v === f[1] ? "new" : "yes");
+      var lbl = cls === "new" ? "added" : (cls === "yes" ? "present" : "not present");
+      mrows += '<td class="c"><i class="' + cls + '" title="v' + v + ': ' + lbl + '"></i></td>';
+    }
+    mrows += "</tr>";
+  });
+  document.querySelector("#matrix tbody").innerHTML = mrows;
+
+  // ---------- Plan checkboxes ----------
+  var KEY = "newsbot-plan-v2", saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
+  function updateProgress() {
+    document.querySelectorAll(".week").forEach(function (w) {
+      var boxes = w.querySelectorAll("input[type=checkbox]");
+      var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
+      w.querySelector(".progress").textContent = n + " of " + boxes.length + " done";
+    });
+  }
+  document.querySelectorAll(".tasks input[type=checkbox]").forEach(function (b) {
+    if (saved[b.id]) b.checked = true;
+    b.addEventListener("change", function () {
+      saved[b.id] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      updateProgress();
+    });
+  });
+  updateProgress();
+})();
+</script>
+</body>
+</html>
