@@ -1,0 +1,21 @@
+EMPLOYEE LEAVE BALANCES — SNAPSHOT AS OF 2026-10-31
+All figures are remaining days.
+
+E101 Aditi Rao:
+Annual leave remaining: 12 days
+Sick leave remaining: 6 days
+
+E102 Kabir Shah:
+Annual leave remaining: 7 days
+Sick leave remaining: 8 days
+
+E103 Meera Iyer:
+Annual leave remaining: 4 days
+Sick leave remaining: 5 days
+
+E104 Arjun Das:
+Annual leave remaining: 15 days
+Sick leave remaining: 8 days
+
+A balance is not an approval. A request must still follow the Leave Policy and approval workflow.
+For an employee's manager and project, consult the Employee Directory.

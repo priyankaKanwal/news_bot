@@ -1,0 +1,24 @@
+PROJECT ALLOCATION AND COVERAGE — NORTHSTAR DIGITAL
+Last updated: 2026-10-20
+
+P301 — Atlas
+Project manager: Rahul Mehta (E201)
+Team members: Aditi Rao (E101), Kabir Shah (E102)
+Critical coverage: At least one of Aditi or Kabir must be available on every working day.
+If both request leave for overlapping dates, Rahul must arrange a qualified backup before approving either request.
+
+P302 — Ledger
+Project manager: Nisha Kapoor (E202)
+Team member: Meera Iyer (E103)
+Critical coverage: Month-end financial close occurs on the last 3 working days of each month.
+Meera's leave during this period requires Nisha's explicit coverage plan.
+
+P303 — Beacon
+Project manager: Vikram Sen (E203)
+Team member: Arjun Das (E104)
+Critical coverage: Customer support must have one trained person available during business hours.
+Vikram may assign a trained backup from another support shift.
+
+Dependency:
+- Employee-to-project membership is also listed in the Employee Directory.
+- Leave approval rules are defined in the Leave Policy.

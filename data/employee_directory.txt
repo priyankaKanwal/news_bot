@@ -1,0 +1,50 @@
+EMPLOYEE DIRECTORY — NORTHSTAR DIGITAL
+Last updated: 2026-10-03
+
+E101 — Aditi Rao
+Department: Engineering
+Role: Backend Developer
+Manager: E201 (Rahul Mehta)
+Assigned project: P301 (Atlas)
+Work location: Bengaluru
+
+E102 — Kabir Shah
+Department: Engineering
+Role: Frontend Developer
+Manager: E201 (Rahul Mehta)
+Assigned project: P301 (Atlas)
+Work location: Hyderabad
+
+E103 — Meera Iyer
+Department: Finance
+Role: Financial Analyst
+Manager: E202 (Nisha Kapoor)
+Assigned project: P302 (Ledger)
+Work location: Bengaluru
+
+E104 — Arjun Das
+Department: Customer Success
+Role: Support Specialist
+Manager: E203 (Vikram Sen)
+Assigned project: P303 (Beacon)
+Work location: Pune
+
+E201 — Rahul Mehta
+Department: Engineering
+Role: Engineering Manager
+Approver for: E101 and E102
+
+E202 — Nisha Kapoor
+Department: Finance
+Role: Finance Manager
+Approver for: E103
+
+E203 — Vikram Sen
+Department: Customer Success
+Role: Customer Success Manager
+Approver for: E104
+
+E204 — Sana Khan
+Department: People Operations
+Role: HR Manager
+Owns company leave policy and escalated leave approvals.

@@ -1,0 +1,13 @@
+COMPANY PROFILE — NORTHSTAR DIGITAL (FICTIONAL TEST DATA)
+Last updated: 2026-10-01
+
+Northstar Digital is a fictional software company headquartered in Bengaluru, India.
+It has three departments: Engineering, Finance, and Customer Success.
+The company uses INR for payroll and expense reimbursements.
+
+Working hours are 9:30 AM to 6:30 PM, Monday to Friday.
+The standard work location is hybrid: employees work from the office on Tuesday and Thursday.
+The remaining weekdays may be worked remotely unless a team-specific policy says otherwise.
+
+The annual leave year runs from January 1 to December 31.
+Employees must submit leave requests through the People Portal.
