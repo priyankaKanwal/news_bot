@@ -1,0 +1,28 @@
+# RSS feeds used by the ingestion pipeline.
+# Add or remove feeds here - no code changes needed.
+# Check each publisher's terms of use before adding a feed.
+
+feeds:
+  - name: BBC News
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    category: World News
+
+  - name: BBC News
+    url: https://feeds.bbci.co.uk/news/technology/rss.xml
+    category: Technology
+
+  - name: The Hindu
+    url: https://www.thehindu.com/business/feeder/default.rss
+    category: Business & Finance
+
+  - name: Times of India
+    url: https://timesofindia.indiatimes.com/rssfeeds/1898055.cms
+    category: Business & Finance
+
+  - name: Hacker News
+    url: https://hnrss.org/frontpage
+    category: Technology
+
+  - name: NDTV
+    url: https://feeds.feedburner.com/ndtvnews-top-stories
+    category: World News
