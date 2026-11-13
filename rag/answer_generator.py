@@ -41,6 +41,15 @@ NOT_ENOUGH_INFO = (
     "to answer that."
 )
 
+def _is_refusal(answer):
+    """True if the whole answer is just the fixed 'not enough information' sentence."""
+
+    def normalise(text):
+        return text.strip().rstrip(".").strip().lower()
+
+    return normalise(answer) == normalise(NOT_ENOUGH_INFO)
+
+
 prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -270,6 +279,11 @@ def generate_answer(
             )
 
             raise
+
+        # If the model itself says the articles don't answer the question,
+        # don't present those articles as sources for the answer.
+        if _is_refusal(answer):
+            return NOT_ENOUGH_INFO, []
 
         return answer, results
 
