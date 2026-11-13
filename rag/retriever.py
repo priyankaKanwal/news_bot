@@ -1,11 +1,8 @@
 
 import numpy as np
-from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from rag.embedding import generate_embeddings
-
-load_dotenv()
+from rag.vector_store import get_embedding_model
 
 
 def retrieve_relevant_chunks(question, top_k=7):
@@ -14,10 +11,7 @@ def retrieve_relevant_chunks(question, top_k=7):
     chunks, document_vectors = generate_embeddings()
 
     # Step 2: Create embedding for the user's question
-    embedding_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
-        task_type="RETRIEVAL_QUERY"
-    )
+    embedding_model = get_embedding_model()
 
     question_vector = embedding_model.embed_query(question)
 

@@ -1,23 +1,27 @@
-from dotenv import load_dotenv
-
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
+from rag.config import (
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    LLM_TIMEOUT,
+    OLLAMA_URL,
+)
 from rag.vector_store import create_vector_store
 
 
-load_dotenv()
-
-
 # --------------------------------------------------
-# STEP 1: Initialize Gemini Chat Model
+# STEP 1: Initialize the local Ollama chat model
 # --------------------------------------------------
+# Ollama must be running (it starts automatically on Windows).
+# No API key is needed - the model runs on this machine.
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-3.5-flash",
-    timeout=60,
-    max_retries=1
+llm = ChatOllama(
+    model=LLM_MODEL,
+    base_url=OLLAMA_URL,
+    temperature=LLM_TEMPERATURE,
+    client_kwargs={"timeout": LLM_TIMEOUT},
 )
 
 
@@ -128,7 +132,7 @@ def rerank_documents(question, results, top_n=3):
     if not results:
         return []
 
-    # Prepare numbered documents for Gemini
+    # Prepare numbered documents for the LLM
     document_parts = []
 
     for index, (document, score) in enumerate(results, start=1):
@@ -144,7 +148,7 @@ def rerank_documents(question, results, top_n=3):
 
     documents_text = "\n\n".join(document_parts)
 
-    # Ask Gemini to select relevant documents
+    # Ask the LLM to select relevant documents
     response = rerank_chain.invoke({
         "question": question,
         "documents": documents_text
@@ -153,7 +157,7 @@ def rerank_documents(question, results, top_n=3):
     print("\n========== RERANKING RESPONSE ==========")
     print(response)
 
-    # Check if Gemini found no relevant documents
+    # Check if the LLM found no relevant documents
     if response.strip().upper() == "NONE":
         return []
 
@@ -273,7 +277,7 @@ def generate_answer(
             ), []
 
         # ------------------------------------------
-        # 6.4 Prepare context for Gemini
+        # 6.4 Prepare context for the LLM
         # ------------------------------------------
 
         print("\n[4] Preparing context...", flush=True)
@@ -303,14 +307,14 @@ def generate_answer(
         # ------------------------------------------
 
         print(
-            "\n[5] Sending question to Gemini LLM...",
+            "\n[5] Sending question to the local LLM...",
             flush=True
         )
 
         try:
 
             print(
-                "Waiting for Gemini response...",
+                "Waiting for the local LLM response...",
                 flush=True
             )
 
@@ -320,14 +324,14 @@ def generate_answer(
             })
 
             print(
-                "\n[6] Gemini response received!",
+                "\n[6] LLM response received!",
                 flush=True
             )
 
         except Exception as error:
 
             print(
-                "\nGemini API Error:",
+                "\nLLM Error:",
                 repr(error),
                 flush=True
             )

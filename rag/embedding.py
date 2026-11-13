@@ -1,12 +1,6 @@
 
-from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
 from rag.text_splitter import split_news_documents
-
-
-# Load API key from .env
-load_dotenv()
+from rag.vector_store import get_embedding_model
 
 
 def generate_embeddings():
@@ -16,11 +10,8 @@ def generate_embeddings():
 
     print("Total chunks:", len(chunks))
 
-    # Step 2: Initialize Gemini embedding model
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
-        task_type="RETRIEVAL_DOCUMENT"
-    )
+    # Step 2: Initialize the local Hugging Face embedding model
+    embeddings = get_embedding_model()
 
     # Step 3: Extract text from chunks
     texts = [chunk.page_content for chunk in chunks]

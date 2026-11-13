@@ -1,20 +1,35 @@
 
 from uuid import uuid5, NAMESPACE_URL
 
-from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 
+from rag.config import (
+    COLLECTION_NAME,
+    EMBEDDING_MODEL,
+    EMBEDDING_QUERY_INSTRUCTION,
+    QDRANT_PATH,
+    VECTOR_SIZE,
+)
 from rag.text_splitter import split_news_documents
 
-load_dotenv()
 
-# Qdrant configuration
-COLLECTION_NAME = "news_articles"
-QDRANT_PATH = "qdrant_db"
-VECTOR_SIZE = 3072
+def get_embedding_model():
+    """Local Hugging Face embedding model (no API key needed).
+
+    normalize_embeddings=True makes every vector length 1, so
+    cosine similarity scores are clean and comparable.
+    """
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        encode_kwargs={"normalize_embeddings": True},
+        query_encode_kwargs={
+            "normalize_embeddings": True,
+            "prompt": EMBEDDING_QUERY_INSTRUCTION,
+        },
+    )
 
 
 def create_vector_store():
@@ -23,7 +38,25 @@ def create_vector_store():
     client = QdrantClient(path=QDRANT_PATH)
 
     # Step 3: Create collection if it doesn't exist
-    if not client.collection_exists(COLLECTION_NAME):
+    if client.collection_exists(COLLECTION_NAME):
+
+        # Guard: vectors from a different embedding model can't be mixed
+        stored_size = client.get_collection(
+            COLLECTION_NAME
+        ).config.params.vectors.size
+
+        if stored_size != VECTOR_SIZE:
+
+            client.close()
+
+            raise RuntimeError(
+                f"Collection '{COLLECTION_NAME}' stores {stored_size}-dim "
+                f"vectors but the current embedding model produces "
+                f"{VECTOR_SIZE}-dim vectors. Delete the '{QDRANT_PATH}' "
+                f"folder and run again to re-embed with the new model."
+            )
+
+    else:
 
         client.create_collection(
             collection_name=COLLECTION_NAME,
@@ -35,14 +68,8 @@ def create_vector_store():
 
         print("Qdrant collection created!")
 
-    # Step 4: Initialize Gemini embedding model
-    # Leave task_type unset:
-    # LangChain's Google integration defaults to
-    # RETRIEVAL_DOCUMENT for documents and
-    # RETRIEVAL_QUERY for queries.
-    embedding_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001"
-    )
+    # Step 4: Initialize the local embedding model
+    embedding_model = get_embedding_model()
 
     # Step 5: Connect LangChain with Qdrant
     vector_store = QdrantVectorStore(
