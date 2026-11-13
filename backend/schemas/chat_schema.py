@@ -9,9 +9,12 @@ class ChatRequest(BaseModel):
 
 
 class Source(BaseModel):
-    """One source document used to build the answer."""
+    """One news article used to build the answer."""
 
-    name: str
+    title: str
+    publisher: str
+    published_at: str | None = None  # ISO 8601, UTC
+    url: str | None = None
     score: float
 
 

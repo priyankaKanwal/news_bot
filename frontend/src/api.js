@@ -28,5 +28,5 @@ export async function askQuestion(question, signal) {
     throw new Error(detail)
   }
 
-  return response.json() // { answer, sources: [{ name, score }] }
+  return response.json() // { answer, sources: [{ title, publisher, published_at, url, score }] }
 }

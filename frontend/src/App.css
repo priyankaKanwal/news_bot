@@ -99,18 +99,20 @@
   letter-spacing: 0.06em;
   color: var(--muted);
 }
-.sources ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.sources ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .sources li {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: 6px 10px;
 }
-.source-score { color: var(--accent); font-variant-numeric: tabular-nums; }
+.source-title { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+a.source-title:hover { text-decoration: underline; }
+.source-meta { font-size: 12px; color: var(--muted); }
 
 .typing { display: flex; gap: 5px; padding: 14px 16px; }
 .typing span {
