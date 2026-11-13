@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -5,6 +7,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    PayloadSchemaType,
     Range,
     VectorParams,
 )
@@ -15,6 +18,7 @@ from rag.config import (
     EMBEDDING_MODEL,
     EMBEDDING_QUERY_INSTRUCTION,
     QDRANT_PATH,
+    QDRANT_URL,
     VECTOR_SIZE,
 )
 
@@ -23,8 +27,20 @@ from rag.config import (
 PUBLISHED_TS_KEY = "metadata.published_ts"
 
 
+def get_client():
+    """Connect to the Qdrant server, or to a local folder if QDRANT_URL is empty."""
+    if QDRANT_URL:
+        return QdrantClient(url=QDRANT_URL)
+
+    return QdrantClient(path=QDRANT_PATH)
+
+
+@lru_cache(maxsize=1)
 def get_embedding_model():
     """Local Hugging Face embedding model (no API key needed).
+
+    Cached: loading the model takes seconds, so it must happen once per
+    process, not once per question.
 
     normalize_embeddings=True makes every vector length 1, so
     cosine similarity scores are clean and comparable.
@@ -66,7 +82,7 @@ def create_vector_store():
     """
 
     # Step 1: Create Qdrant client
-    client = QdrantClient(path=QDRANT_PATH)
+    client = get_client()
 
     # Step 2: Create collection if it doesn't exist
     if client.collection_exists(COLLECTION_NAME):
@@ -83,8 +99,9 @@ def create_vector_store():
             raise RuntimeError(
                 f"Collection '{COLLECTION_NAME}' stores {stored_size}-dim "
                 f"vectors but the current embedding model produces "
-                f"{VECTOR_SIZE}-dim vectors. Delete the '{QDRANT_PATH}' "
-                f"folder and run again to re-embed with the new model."
+                f"{VECTOR_SIZE}-dim vectors. Delete the collection "
+                f"(or the '{QDRANT_PATH}' folder in local mode) and "
+                f"re-run ingestion to embed with the new model."
             )
 
     else:
@@ -98,6 +115,15 @@ def create_vector_store():
         )
 
         print("Qdrant collection created!")
+
+    # A numeric index makes the 30-day range filter fast on a server.
+    # (Local file mode does not support payload indexes.)
+    if QDRANT_URL:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name=PUBLISHED_TS_KEY,
+            field_schema=PayloadSchemaType.FLOAT
+        )
 
     # Step 3: Initialize the local embedding model
     embedding_model = get_embedding_model()

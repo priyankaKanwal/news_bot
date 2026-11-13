@@ -3,10 +3,12 @@
 Change models here - nothing else needs editing.
 
 IMPORTANT: VECTOR_SIZE must match EMBEDDING_MODEL's output size.
-If you switch the embedding model, update VECTOR_SIZE and delete
-the qdrant_db/ folder so the data is re-embedded with the new model.
+If you switch the embedding model, update VECTOR_SIZE and delete the
+stored collection so the data is re-embedded with the new model.
 Vectors from different models cannot be mixed.
 """
+
+import os
 
 # ---------- Embedding model (Hugging Face, runs locally) ----------
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
@@ -42,5 +44,18 @@ RERANKER_MODEL = "BAAI/bge-reranker-base"
 RERANK_TOP_N = 3         # chunks passed to the LLM
 
 # ---------- Vector database (Qdrant) ----------
-QDRANT_PATH = "qdrant_db"
+# Server mode (default): run `docker compose up -d`. Several processes
+# (chat server, scheduler) can then use the database at the same time.
+# Local file mode: set the environment variable QDRANT_URL to an empty
+# string. Only ONE process may open the folder at a time.
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+QDRANT_PATH = "qdrant_db"      # used only in local file mode
 COLLECTION_NAME = "news_articles"
+
+# ---------- Scheduled ingestion (ingestion/scheduler.py) ----------
+# Times are UTC.
+INGEST_HOUR_UTC = 2
+INGEST_MINUTE_UTC = 0
+INGEST_MAX_ATTEMPTS = 3        # retries for a failed run
+INGEST_RETRY_DELAY = 60        # seconds, doubled after each failure
+LOG_FILE = "logs/ingestion.log"
