@@ -8,7 +8,7 @@ from rag.config import (
     LLM_TIMEOUT,
     OLLAMA_URL,
 )
-from rag.vector_store import create_vector_store
+from rag.vector_store import build_recency_filter, create_vector_store
 
 
 # --------------------------------------------------
@@ -215,10 +215,13 @@ def generate_answer(
 
         print("\n[2] Searching Qdrant...", flush=True)
 
+        # The 30-day filter runs inside Qdrant, so expired articles
+        # can never be retrieved, even if cleanup hasn't run yet.
         results = vector_store.similarity_search_with_relevance_scores(
             question,
             k=top_k,
-            score_threshold=0.70
+            score_threshold=0.70,
+            filter=build_recency_filter()
         )
 
         print("\n========== QDRANT RETRIEVAL ==========")
@@ -286,14 +289,14 @@ def generate_answer(
 
         for document, _score in results:
 
-            source = document.metadata.get(
-                "source",
-                "Unknown"
-            )
+            meta = document.metadata
 
             context_parts.append(
                 f"""
-                Source: {source}
+                Title: {meta.get("title", "Unknown")}
+                Publisher: {meta.get("publisher", "Unknown")}
+                Published: {meta.get("published_at", "Unknown")}
+                URL: {meta.get("article_url", "Unknown")}
 
                 Content:
                 {document.page_content}
