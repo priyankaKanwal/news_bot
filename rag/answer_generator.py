@@ -12,6 +12,7 @@ from rag.config import (
     RERANKER_MODEL,
     RETRIEVE_TOP_K,
     SCORE_THRESHOLD,
+    USE_RERANKER,
 )
 from rag.vector_store import build_recency_filter, create_vector_store
 
@@ -188,11 +189,15 @@ def generate_answer(
 
         print("\n[3] Reranking documents...", flush=True)
 
-        results = rerank_documents(
-            question=question,
-            results=results,
-            top_n=RERANK_TOP_N
-        )
+        if USE_RERANKER:
+            results = rerank_documents(
+                question=question,
+                results=results,
+                top_n=RERANK_TOP_N
+            )
+        else:
+            # Qdrant already returns results best-first by vector score
+            results = results[:RERANK_TOP_N]
 
         print(
             f"\nSelected {len(results)} relevant chunks.",
