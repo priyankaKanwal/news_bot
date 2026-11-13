@@ -1,4 +1,5 @@
 /venv
 .env
-
-                                                                                                                                                       
+qdrant_db/
+__pycache__/
+*.pyc

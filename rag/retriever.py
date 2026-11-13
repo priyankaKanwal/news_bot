@@ -8,7 +8,7 @@ from rag.embedding import generate_embeddings
 load_dotenv()
 
 
-def retrieve_relevant_chunks(question, top_k=3):
+def retrieve_relevant_chunks(question, top_k=7):
 
     # Step 1: Load existing chunks and their embeddings
     chunks, document_vectors = generate_embeddings()
