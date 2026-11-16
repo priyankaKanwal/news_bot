@@ -9,6 +9,11 @@ Vectors from different models cannot be mixed.
 """
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ---------- Embedding model (Hugging Face, runs locally) ----------
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
@@ -22,7 +27,7 @@ EMBEDDING_QUERY_INSTRUCTION = (
 
 # ---------- LLM (Ollama, runs locally) ----------
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2")
-OLLAMA_URL = "http://localhost:11434"
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 LLM_TEMPERATURE = 0      # 0 = most factual, least creative
 LLM_TIMEOUT = 120        # seconds; local models on CPU can be slow
 
@@ -35,7 +40,7 @@ RETRIEVE_TOP_K = int(os.getenv("RETRIEVE_TOP_K", "10"))
 # Measured on 12 test questions (BGE-small, 30-day news):
 #   answerable questions scored 0.838-0.929, unanswerable 0.738-0.802.
 # Re-measure this when the amount or kind of news changes.
-SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.82"))
+SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.70"))
 
 # A cross-encoder reads (question, chunk) together and orders the
 # candidates better than vector similarity. It is used only for ORDERING:

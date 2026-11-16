@@ -1,20 +1,3 @@
-"""Measure how well the RAG pipeline answers, instead of guessing.
-
-Stage A - retrieval (fast, no LLM). For many gate / ordering / top-N
-settings, how often does the context sent to the LLM contain an
-article that answers the question, and how often does an
-unanswerable question still reach the LLM?
-
-    python -m evaluation.eval_rag
-
-Stage B - end to end (slow, calls the LLM) with the CURRENT settings.
-Settings can be overridden per run with environment variables:
-
-    SCORE_THRESHOLD=0.70 RERANK_TOP_N=5 python -m evaluation.eval_rag --e2e
-
-Questions live in evaluation/questions.json (a snapshot of the news).
-"""
-
 import argparse
 import contextlib
 import io

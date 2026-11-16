@@ -13,7 +13,7 @@ class Source(BaseModel):
 
     title: str
     publisher: str
-    published_at: str | None = None  # ISO 8601, UTC
+    published_at: str | None = None 
     url: str | None = None
     score: float
 

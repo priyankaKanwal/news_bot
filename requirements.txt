@@ -24,6 +24,7 @@ beautifulsoup4==4.15.0
 requests==2.34.2
 PyYAML==6.0.3
 APScheduler==3.11.3            # daily scheduled ingestion
+python-dotenv==1.2.4           # load local environment settings from .env
 
 # --- Testing ---
 httpx==0.28.1                  # needed by FastAPI's TestClient
