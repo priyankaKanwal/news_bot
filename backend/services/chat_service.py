@@ -2,11 +2,9 @@ from rag.answer_generator import generate_answer
 
 
 def process_chat(question: str):
-    # Step 1: Call our existing RAG function
     answer, results = generate_answer(question, top_k=7)
 
-    # Step 2: Collapse chunks into one entry per article.
-    # Several chunks can come from the same article; keep the best score.
+    # Keep one source per article, using its best chunk score.
     articles = {}
 
     for document, score in results:
@@ -23,14 +21,12 @@ def process_chat(question: str):
                 "score": float(score),
             }
 
-    # Step 3: Best-matching articles first
     sources = sorted(
         articles.values(),
         key=lambda source: source["score"],
         reverse=True
     )
 
-    # Step 4: Return answer and sources
     return {
         "answer": answer,
         "sources": sources

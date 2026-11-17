@@ -1,21 +1,11 @@
-"""Fallback for broad "what's the latest news?" style questions.
-
-Vector similarity is the wrong tool for these: "top world news today"
-is not close to any single article, so every chunk scores below
-SCORE_THRESHOLD and the bot refuses. Instead we simply return the newest
-articles, optionally narrowed to a publisher or category named in the
-question. The LLM still decides whether they answer it.
-"""
+"""Fetch recent articles for broad news questions that vector search may miss."""
 
 import re
-from pathlib import Path
 
-import yaml
 from langchain_core.documents import Document
-from qdrant_client.models import FieldCondition, MatchValue
 
-from rag.vector_store import build_recency_filter, get_client
 from rag.config import COLLECTION_NAME
+from rag.vector_store import build_recency_filter, get_client
 
 BROWSE_PATTERN = re.compile(
     r"\b(latest|top|today|todays|today's|trending|recent|recently|"
@@ -24,14 +14,12 @@ BROWSE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Words in a question -> category stored by ingestion (see feeds.yaml)
+# Query keywords mapped to stored article categories.
 CATEGORY_WORDS = {
     "World News": ("world", "global", "international"),
     "Technology": ("tech", "technology", "ai"),
     "Business & Finance": ("business", "finance", "economy", "economic", "market"),
 }
-
-FEEDS_FILE = Path(__file__).resolve().parent.parent / "feeds.yaml"
 
 BROWSE_MAX_ARTICLES = 6
 
@@ -40,67 +28,58 @@ def is_browse_question(question):
     return bool(BROWSE_PATTERN.search(question))
 
 
-def _publishers():
-    with open(FEEDS_FILE, encoding="utf-8") as file:
-        feeds = yaml.safe_load(file)["feeds"]
-
-    return {feed["name"] for feed in feeds}
-
-
-def _filter_conditions(question):
-    """Narrow to a publisher / category if the question names one."""
-    text = question.lower()
-    words = set(re.findall(r"[a-z]+", text))
-    conditions = []
-
-    for publisher in _publishers():
-        if publisher.lower() in text or (
-            publisher.lower().split()[0] in {"bbc", "ndtv", "hindu"}
-            and publisher.lower().split()[0] in words
-        ):
-            conditions.append(
-                FieldCondition(
-                    key="metadata.publisher",
-                    match=MatchValue(value=publisher),
-                )
-            )
-            break
-
+def _category_for_question(question):
+    words = set(re.findall(r"[a-z]+", question.lower()))
     for category, keywords in CATEGORY_WORDS.items():
         if words & set(keywords):
-            conditions.append(
-                FieldCondition(
-                    key="metadata.category",
-                    match=MatchValue(value=category),
-                )
-            )
-            break
+            return category
 
-    return conditions
+    return None
+
+
+def _publisher_for_question(question, points):
+    words = set(re.findall(r"[a-z]+", question.lower()))
+    publishers = {
+        point.payload["metadata"].get("publisher")
+        for point in points
+        if point.payload and point.payload.get("metadata", {}).get("publisher")
+    }
+
+    for publisher in sorted(publishers, key=len, reverse=True):
+        publisher_words = set(re.findall(r"[a-z]+", publisher.lower()))
+        publisher_words -= {"and", "of", "the", "news"}
+
+        if publisher.lower() in question.lower() or words & publisher_words:
+            return publisher
+
+    return None
 
 
 def fetch_latest_articles(question, limit=BROWSE_MAX_ARTICLES):
-    """Newest articles (one chunk each) as (Document, score) pairs.
+    """Return the newest unique articles, optionally filtered.
 
-    Falls back to the unnarrowed set if the publisher/category filter
-    matches nothing. The score is a placeholder (1.0): these results
-    were chosen by recency, not similarity.
+    Results use a placeholder score because they are ordered by recency.
     """
     client = get_client()
 
     try:
-        for conditions in (_filter_conditions(question), []):
-            points, _ = client.scroll(
-                collection_name=COLLECTION_NAME,
-                scroll_filter=build_recency_filter(conditions),
-                limit=1000,
-                with_payload=True,
-            )
+        points, _ = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=build_recency_filter(),
+            limit=1000,
+            with_payload=True,
+        )
 
-            if points:
-                break
+        category = _category_for_question(question)
+        publisher = _publisher_for_question(question, points)
+        filtered_points = [
+            point for point in points
+            if (category is None or point.payload["metadata"].get("category") == category)
+            and (publisher is None or point.payload["metadata"].get("publisher") == publisher)
+        ]
+        if filtered_points:
+            points = filtered_points
 
-        # Newest first, one chunk per article
         points.sort(
             key=lambda p: p.payload["metadata"].get("published_ts") or 0,
             reverse=True,

@@ -1,10 +1,6 @@
-# Qdrant vector database as a server.
-#
-#   docker compose up -d      start (data is kept in the named volume)
-#   docker compose down       stop (data is kept)
-#   docker compose down -v    stop AND delete all stored vectors
-#
-# Dashboard: http://localhost:6333/dashboard
+# Start with `docker compose up -d`; data persists in named volumes.
+# `docker compose down -v` also deletes stored data.
+# Qdrant dashboard: http://localhost:6333/dashboard
 
 services:
   qdrant:
@@ -16,5 +12,24 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: news_bot_postgres
+    ports:
+      - "127.0.0.1:5434:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-news_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-news_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-news_bot_dev}
+    volumes:
+      - postgres_storage:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-news_bot} -d ${POSTGRES_DB:-news_bot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
+  postgres_storage:

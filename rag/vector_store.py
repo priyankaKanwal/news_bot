@@ -12,7 +12,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from ingestion.filters import cutoff_timestamp
+from ingestion.date_filter import cutoff_timestamp
 from rag.config import (
     COLLECTION_NAME,
     EMBEDDING_MODEL,
@@ -22,13 +22,12 @@ from rag.config import (
     VECTOR_SIZE,
 )
 
-# LangChain stores chunk metadata under the "metadata" key in the
-# Qdrant payload, so a metadata field is filtered as "metadata.<name>".
+
 PUBLISHED_TS_KEY = "metadata.published_ts"
 
 
 def get_client():
-    """Connect to the Qdrant server, or to a local folder if QDRANT_URL is empty."""
+    """Connect to Qdrant in server or local-file mode."""
     if QDRANT_URL:
         return QdrantClient(url=QDRANT_URL)
 
@@ -37,14 +36,7 @@ def get_client():
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
-    """Local Hugging Face embedding model (no API key needed).
-
-    Cached: loading the model takes seconds, so it must happen once per
-    process, not once per question.
-
-    normalize_embeddings=True makes every vector length 1, so
-    cosine similarity scores are clean and comparable.
-    """
+    """Return a cached, normalized local embedding model."""
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
         encode_kwargs={"normalize_embeddings": True},
@@ -56,18 +48,13 @@ def get_embedding_model():
 
 
 def build_recency_filter(extra_conditions=None):
-    """Qdrant filter: only articles published in the last 30 days.
-
-    Used on every search. The cleanup job reuses the same cutoff
-    (ingestion.filters) so both always agree on what is "recent".
-    """
+    """Filter Qdrant results to articles in ingestion's 30-day window."""
     conditions = [
         FieldCondition(
             key=PUBLISHED_TS_KEY,
-            range=Range(gte=cutoff_timestamp())
+            range=Range(gte=cutoff_timestamp()),
         )
     ]
-
     if extra_conditions:
         conditions.extend(extra_conditions)
 
@@ -75,19 +62,11 @@ def build_recency_filter(extra_conditions=None):
 
 
 def create_vector_store():
-    """Connect to Qdrant (creating the collection if needed).
-
-    This does NOT load any documents. Articles are added by
-    `python -m ingestion.ingest`.
-    """
-
-    # Step 1: Create Qdrant client
+    """Connect to Qdrant and create the collection if needed."""
     client = get_client()
 
-    # Step 2: Create collection if it doesn't exist
     if client.collection_exists(COLLECTION_NAME):
 
-        # Guard: vectors from a different embedding model can't be mixed
         stored_size = client.get_collection(
             COLLECTION_NAME
         ).config.params.vectors.size
@@ -101,7 +80,7 @@ def create_vector_store():
                 f"vectors but the current embedding model produces "
                 f"{VECTOR_SIZE}-dim vectors. Delete the collection "
                 f"(or the '{QDRANT_PATH}' folder in local mode) and "
-                f"re-run ingestion to embed with the new model."
+                f"repopulate the collection with the current model."
             )
 
     else:
@@ -116,19 +95,15 @@ def create_vector_store():
 
         print("Qdrant collection created!")
 
-    # A numeric index makes the 30-day range filter fast on a server.
-    # (Local file mode does not support payload indexes.)
     if QDRANT_URL:
         client.create_payload_index(
             collection_name=COLLECTION_NAME,
             field_name=PUBLISHED_TS_KEY,
-            field_schema=PayloadSchemaType.FLOAT
+            field_schema=PayloadSchemaType.FLOAT,
         )
 
-    # Step 3: Initialize the local embedding model
     embedding_model = get_embedding_model()
 
-    # Step 4: Connect LangChain with Qdrant
     vector_store = QdrantVectorStore(
         client=client,
         collection_name=COLLECTION_NAME,
@@ -146,11 +121,10 @@ if __name__ == "__main__":
 
     question = input("\nAsk a question about the news: ")
 
-    # Search only news from the last 30 days
     results = vector_store.similarity_search_with_score(
         question,
         k=7,
-        filter=build_recency_filter()
+        filter=build_recency_filter(),
     )
 
     print("\nRelevant news chunks:\n")

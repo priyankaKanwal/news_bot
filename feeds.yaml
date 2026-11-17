@@ -1,7 +1,4 @@
-# RSS feeds used by the ingestion pipeline.
-# Add or remove feeds here - no code changes needed.
-# Check each publisher's terms of use before adding a feed.
-
+# Check each publisher's terms before adding a feed.
 feeds:
   - name: BBC News
     url: https://feeds.bbci.co.uk/news/world/rss.xml

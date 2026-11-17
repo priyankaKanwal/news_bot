@@ -7,7 +7,7 @@ export default function ChatInput({ onSend, disabled }) {
   const [value, setValue] = useState('')
   const ref = useRef(null)
 
-  // auto-grow textarea
+  // Grow the textarea with its content.
   useEffect(() => {
     const el = ref.current
     if (!el) return

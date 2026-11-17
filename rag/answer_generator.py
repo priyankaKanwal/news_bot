@@ -18,12 +18,6 @@ from rag.browse import fetch_latest_articles, is_browse_question
 from rag.vector_store import build_recency_filter, create_vector_store
 
 
-# --------------------------------------------------
-# STEP 1: Initialize the local Ollama chat model
-# --------------------------------------------------
-# Ollama must be running (it starts automatically on Windows).
-# No API key is needed - the model runs on this machine.
-
 llm = ChatOllama(
     model=LLM_MODEL,
     base_url=OLLAMA_URL,
@@ -31,12 +25,6 @@ llm = ChatOllama(
     client_kwargs={"timeout": LLM_TIMEOUT},
 )
 
-
-# --------------------------------------------------
-# STEP 2: Create Answer Prompt
-# --------------------------------------------------
-# Kept short and strict: small local models follow a few clear
-# rules better than a long list.
 
 NOT_ENOUGH_INFO = (
     "I do not have enough information in the recent news "
@@ -81,14 +69,9 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-# --------------------------------------------------
-# STEP 3: Create the LangChain answer chain
-# --------------------------------------------------
-
 answer_chain = prompt | llm | StrOutputParser()
 
-# Used for broad "latest / top stories" questions. The articles are simply
-# the newest ones, so the task is to summarise them, not to find a match.
+# Broad news questions need a roundup of the newest articles, not a match.
 browse_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -120,15 +103,11 @@ browse_prompt = ChatPromptTemplate.from_messages([
 browse_chain = browse_prompt | llm | StrOutputParser()
 
 
-# --------------------------------------------------
-# STEP 4: Rerank retrieved chunks with a cross-encoder
-# --------------------------------------------------
-
 _reranker = None
 
 
 def get_reranker():
-    """Load the cross-encoder once, on first use (it takes a few seconds)."""
+    """Load and cache the cross-encoder."""
     global _reranker
 
     if _reranker is None:
@@ -138,13 +117,7 @@ def get_reranker():
 
 
 def rerank_documents(question, results, top_n=RERANK_TOP_N):
-    """Order (document, score) results by how well they answer the question.
-
-    Unlike the vector search, which embeds the question and the chunk
-    separately, a cross-encoder reads them TOGETHER, so it judges
-    relevance more accurately. It is slower, so we only run it on the
-    few chunks that already passed the similarity threshold.
-    """
+    """Rank retrieved documents by relevance to the question."""
     if not results:
         return []
 
@@ -161,12 +134,8 @@ def rerank_documents(question, results, top_n=RERANK_TOP_N):
     return [results[index] for index in order[:top_n]]
 
 
-# --------------------------------------------------
-# STEP 6: Retrieve Documents and Generate Answer
-# --------------------------------------------------
-
 def _format_context(results):
-    """Turn (document, score) results into the text block sent to the LLM."""
+    """Format retrieved documents for the LLM."""
     parts = []
 
     for document, _score in results:
@@ -191,13 +160,10 @@ def _format_context(results):
 def generate_answer(
     question,
     top_k=RETRIEVE_TOP_K,
-    source_file=None,
-    document_type=None,
     vector_store=None
 ):
 
-    # If a vector store is provided, reuse it.
-    # Otherwise, create a new connection.
+    # Reuse the provided store or open a connection for this request.
     client = None
 
     if vector_store is None:
@@ -208,23 +174,16 @@ def generate_answer(
 
     try:
 
-        # ------------------------------------------
-        # 6.1 Retrieve documents from Qdrant
-        # ------------------------------------------
-
         print("\n[2] Searching Qdrant...", flush=True)
 
-        # The 30-day filter runs inside Qdrant, so expired articles
-        # can never be retrieved, even if cleanup hasn't run yet.
         results = vector_store.similarity_search_with_relevance_scores(
             question,
             k=top_k,
             score_threshold=SCORE_THRESHOLD,
-            filter=build_recency_filter()
+            filter=build_recency_filter(),
         )
 
-        # Broad "latest / top / today" questions don't match any single
-        # article closely, so the gate rejects them. Browse by recency.
+        # Broad news questions may need a recency-based fallback.
         browsing = False
 
         if not results and is_browse_question(question):
@@ -254,14 +213,10 @@ def generate_answer(
             flush=True
         )
 
-        # ------------------------------------------
-        # 6.2 Rerank retrieved documents
-        # ------------------------------------------
-
         print("\n[3] Reranking documents...", flush=True)
 
         if browsing:
-            # Already chosen by recency; keep all of them, newest first
+            # Results are already ordered by recency.
             pass
         elif USE_RERANKER:
             results = rerank_documents(
@@ -270,7 +225,6 @@ def generate_answer(
                 top_n=RERANK_TOP_N
             )
         else:
-            # Qdrant already returns results best-first by vector score
             results = results[:RERANK_TOP_N]
 
         print(
@@ -289,25 +243,13 @@ def generate_answer(
 
             print("-" * 60)
 
-        # ------------------------------------------
-        # 6.3 Check whether relevant documents exist
-        # ------------------------------------------
-
         if not results:
 
             return NOT_ENOUGH_INFO, []
 
-        # ------------------------------------------
-        # 6.4 Prepare context for the LLM
-        # ------------------------------------------
-
         print("\n[4] Preparing context...", flush=True)
 
         context = _format_context(results)
-
-        # ------------------------------------------
-        # 6.5 Generate final answer
-        # ------------------------------------------
 
         print(
             "\n[5] Sending question to the local LLM...",
@@ -343,8 +285,7 @@ def generate_answer(
 
             raise
 
-        # A broad question ("top news today") can pull chunks that don't
-        # answer it. Retry once with the newest articles instead.
+        # Retry broad questions with the newest articles if the answer is a refusal.
         if (
             _is_refusal(answer)
             and not browsing
@@ -367,8 +308,6 @@ def generate_answer(
 
                 results = latest
 
-        # If the model itself says the articles don't answer the question,
-        # don't present those articles as sources for the answer.
         if _is_refusal(answer):
             return NOT_ENOUGH_INFO, []
 
@@ -379,10 +318,6 @@ def generate_answer(
         if client is not None:
             client.close()
 
-
-# --------------------------------------------------
-# STEP 7: Run Chatbot Directly
-# --------------------------------------------------
 
 if __name__ == "__main__":
 
