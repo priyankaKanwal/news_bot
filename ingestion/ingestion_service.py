@@ -7,10 +7,18 @@ from uuid import NAMESPACE_URL, uuid5
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sqlalchemy import delete
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
+from backend.database import Base, SessionLocal, engine
+from backend.models import Article
 from ingestion.cleaner import CleanedArticle, clean_article
 from ingestion.config_loader import FeedConfig, load_feeds
-from ingestion.date_filter import delete_expired_articles, filter_articles
+from ingestion.date_filter import (
+    cutoff_datetime,
+    delete_expired_articles,
+    filter_articles,
+)
 from ingestion.deduplicator import deduplicate_articles
 from ingestion.fetcher import FeedFetchError, fetch_feed
 from ingestion.normalizer import normalize_entry
@@ -114,14 +122,48 @@ def _process_feed(feed: FeedConfig, now: datetime) -> tuple[list[CleanedArticle]
     return recent_articles, stats
 
 
+def _store_articles(articles: list[CleanedArticle]) -> int:
+    """Save articles without failing when a previous run already inserted them."""
+    if not articles:
+        return 0
+
+    rows = [
+        {
+            "article_id": article["article_id"],
+            "title": article["title"],
+            "content": article["content"],
+            "url": article["url"],
+            "publisher": article["publisher"],
+            "category": article["category"],
+            "published_at": article["published_at"],
+            "guid": article["guid"],
+            "author": article["author"],
+            "image_url": article["image_url"],
+            "ingested_at": datetime.now(timezone.utc),
+        }
+        for article in articles
+    ]
+
+    with SessionLocal.begin() as db:
+        result = db.execute(
+            postgresql_insert(Article).values(rows).on_conflict_do_nothing()
+        )
+        return result.rowcount or 0
+
+
 def run_ingestion() -> dict:
     """Fetch, clean, filter, deduplicate, and store the configured feeds."""
+    Base.metadata.create_all(bind=engine)
     feeds = load_feeds()
     now = datetime.now(timezone.utc)
     vector_store, client = create_vector_store()
 
     try:
         deleted_chunks = delete_expired_articles(client, COLLECTION_NAME, now)
+        with SessionLocal.begin() as db:
+            deleted_articles = db.execute(
+                delete(Article).where(Article.published_at < cutoff_datetime(now))
+            ).rowcount
         known_ids = _known_article_ids(client)
 
         articles = []
@@ -134,14 +176,18 @@ def run_ingestion() -> dict:
             feed_reports.append(stats)
             failed_feeds += stats["error"] is not None
 
-        unique_articles, duplicates_removed = deduplicate_articles(
-            articles,
-            known_article_ids=known_ids,
-        )
+        unique_articles, duplicates_removed = deduplicate_articles(articles)
+        articles_to_index = [
+            article
+            for article in unique_articles
+            if article["article_id"] not in known_ids
+        ]
+        duplicates_removed += len(unique_articles) - len(articles_to_index)
+        articles_saved = _store_articles(unique_articles)
 
         documents = []
         document_ids = []
-        for article in unique_articles:
+        for article in articles_to_index:
             chunks, chunk_ids = build_documents(article)
             documents.extend(chunks)
             document_ids.extend(chunk_ids)
@@ -153,8 +199,10 @@ def run_ingestion() -> dict:
             "feeds": feed_reports,
             "failed_feeds": failed_feeds,
             "duplicates_removed": duplicates_removed,
+            "expired_articles_deleted": deleted_articles or 0,
             "expired_chunks_deleted": deleted_chunks,
-            "stored_articles": len(unique_articles),
+            "articles_saved": articles_saved,
+            "stored_articles": len(articles_to_index),
             "stored_chunks": len(documents),
         }
     finally:
@@ -177,8 +225,10 @@ def print_report(report: dict) -> None:
     print("\nSUMMARY")
     print(f"  failed feeds: {report['failed_feeds']}")
     print(f"  duplicate articles skipped: {report['duplicates_removed']}")
+    print(f"  expired articles deleted: {report['expired_articles_deleted']}")
     print(f"  expired chunks deleted: {report['expired_chunks_deleted']}")
-    print(f"  new articles stored: {report['stored_articles']}")
+    print(f"  articles saved to PostgreSQL: {report['articles_saved']}")
+    print(f"  new articles indexed in Qdrant: {report['stored_articles']}")
     print(f"  chunks stored: {report['stored_chunks']}")
 
 

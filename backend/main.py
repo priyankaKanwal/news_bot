@@ -2,13 +2,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.database import Base, engine, get_db
-from backend.models import ChatMessage, Conversation
+from backend.models import Article, ChatMessage, Conversation
+from backend.schemas.article_schema import RecentArticle
 from backend.schemas.chat_schema import (
     ChatRequest,
     ChatResponse,
@@ -16,6 +17,7 @@ from backend.schemas.chat_schema import (
     ConversationSummary,
 )
 from backend.services.chat_service import process_chat
+from ingestion.ingestion_service import run_ingestion
 
 
 @asynccontextmanager
@@ -51,6 +53,26 @@ def health_check():
         "status": "success",
         "message": "AI News Intelligence backend is running!"
     }
+
+
+@app.get("/api/articles/recent", response_model=list[RecentArticle])
+def list_recent_articles(
+    limit: int = Query(default=6, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    statement = (
+        select(Article)
+        .where(Article.url != "")
+        .order_by(Article.published_at.desc())
+        .limit(limit)
+    )
+    return db.scalars(statement).all()
+
+
+@app.post("/api/ingestion/run")
+def start_ingestion():
+    """Run one ingestion pass for the feeds configured in feeds.yaml."""
+    return run_ingestion()
 
 
 @app.get("/api/conversations", response_model=list[ConversationSummary])

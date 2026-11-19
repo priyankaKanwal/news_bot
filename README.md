@@ -35,10 +35,11 @@ React frontend ── HTTP ──► FastAPI chat API
                                         │
                            answer and article sources
 
-FastAPI ──► PostgreSQL (conversations and messages)
+FastAPI and ingestion ──► PostgreSQL (articles and chat history)
 ```
 
-Ingestion is run manually with the command below. A daily scheduler is not currently wired into the application.
+Ingestion can be run manually or by a separate daily scheduler process. The scheduler
+does not run inside the FastAPI application.
 
 ## Project layout
 
@@ -46,7 +47,7 @@ Ingestion is run manually with the command below. A daily scheduler is not curre
 .
 ├── backend/       # FastAPI app, chat API, SQLAlchemy models and services
 ├── docs/          # Product requirements, project plan, and build guide
-├── frontend/      # React + Vite chat interface
+├── frontend/      # React + Vite + Tailwind chat interface
 ├── ingestion/     # RSS loading, cleaning, filtering, deduplication, storage
 ├── rag/           # Qdrant, retrieval, reranking, and answer generation
 ├── docker-compose.yml
@@ -98,9 +99,17 @@ DATABASE_URL=postgresql+psycopg://news_bot:news_bot_dev@localhost:5434/news_bot
 QDRANT_URL=http://localhost:6333
 OLLAMA_URL=http://localhost:11434
 LLM_MODEL=llama3.2
+
+INGESTION_SCHEDULE_HOUR=2
+INGESTION_SCHEDULE_MINUTE=0
+INGESTION_TIMEZONE=UTC
 ```
 
 These PostgreSQL credentials are for local development only. Use strong credentials and appropriately secured services outside a local environment. Keep real credentials out of source control; `.env` is ignored by Git.
+
+The ingestion scheduler defaults to 02:00 UTC each day. Set the hour, minute, and
+timezone above to change its daily run time. Use a valid timezone name such as
+`Asia/Kolkata`.
 
 Optional RAG settings:
 
@@ -143,9 +152,19 @@ From the repository root, with the Python environment active:
 python -m ingestion.ingestion_service
 ```
 
-The command reports fetched, kept, and skipped articles per feed, failed feeds, duplicates, expired chunks deleted, and newly stored articles/chunks. A failed feed is reported and does not prevent the other configured feeds from being processed.
+The command reports fetched, kept, and skipped articles per feed, failed feeds, duplicates, expired articles/chunks deleted, articles saved to PostgreSQL, and new articles/chunks indexed in Qdrant. A failed feed is reported and does not prevent the other configured feeds from being processed.
 
-To add or remove sources, edit `feeds.yaml`. Check each publisher's terms before adding a feed. The ingestion process runs only when invoked; configure an external scheduler if you need automatic daily ingestion.
+To add or remove sources, edit `feeds.yaml`. Check each publisher's terms before adding a feed. The manual command runs once; start the scheduler separately for automatic daily ingestion:
+
+```powershell
+.\venv\Scripts\python.exe -m ingestion.scheduler
+```
+
+Keep that process running in its own terminal or managed service. It runs ingestion
+at the next configured time (not immediately on startup), retries transient feed
+request failures using the existing fetcher, and continues processing other feeds
+when one feed fails. Run only one scheduler instance to avoid overlapping scheduled
+runs. Stop it with `Ctrl+C`.
 
 ### 6. Start the API
 
@@ -170,6 +189,8 @@ npm run dev
 
 Open the Vite URL printed in the terminal (normally <http://localhost:5173>). The frontend defaults to the API at `http://localhost:8000`. To use another API URL, set `VITE_API_URL` in the frontend environment before starting Vite.
 
+The welcome screen includes the six most recently published, ingested articles from `GET /api/articles/recent`; each story links to its publisher.
+
 ## Run the project
 
 After completing the one-time setup above, start the app in separate terminals. Run commands from the repository root unless a step says otherwise.
@@ -182,13 +203,15 @@ After completing the one-time setup above, start the app in separate terminals. 
 
 2. **Start Ollama** (Terminal 2): open the Ollama desktop app, or run `ollama serve` if it is not already running. Make sure the configured model has been downloaded (for example, run `ollama pull llama3.2` once).
 
-3. **Fetch and index the latest feed articles** (Terminal 3):
+3. **Start scheduled ingestion** (Terminal 3):
 
    ```powershell
-   .\venv\Scripts\python.exe -m ingestion.ingestion_service
+   .\venv\Scripts\python.exe -m ingestion.scheduler
    ```
 
-   Wait for ingestion to finish. Run this again whenever you want to refresh the news; it is not scheduled automatically.
+   The scheduler stays running and ingests daily at the configured time. To run an
+   immediate one-off ingestion instead, use
+   `.\venv\Scripts\python.exe -m ingestion.ingestion_service` in another terminal.
 
 4. **Start the backend API** (Terminal 4):
 
@@ -216,6 +239,19 @@ All endpoints are prefixed with `/api`.
 ### `GET /api/health`
 
 Checks that the API process is responding.
+
+### `POST /api/ingestion/run`
+
+Runs one ingestion pass for every feed in `feeds.yaml` and returns the ingestion
+report. The request has no body. This endpoint waits until ingestion finishes;
+use the command-line ingestion process or scheduler for longer-running jobs.
+
+Try it from <http://localhost:8000/docs>. This development API has no
+authentication, so keep the endpoint local and do not expose it publicly.
+
+Ingestion saves article details in PostgreSQL and searchable chunks in Qdrant.
+When run against existing Qdrant data, it saves articles available in the
+configured feeds without indexing those same articles again.
 
 ### `POST /api/chat`
 
@@ -278,6 +314,9 @@ docker compose down
 # Run ingestion
 python -m ingestion.ingestion_service
 
+# Run daily ingestion scheduler (keeps running until Ctrl+C)
+python -m ingestion.scheduler
+
 # Run the backend
 python -m uvicorn backend.main:app --reload
 
@@ -298,4 +337,4 @@ npm run build
 
 ## Current scope and planned work
 
-The repository's [`docs/Plan.md`](docs/Plan.md) and [`docs/PRD.md`](docs/PRD.md) describe the broader project goals. The README documents the current code: ingestion is manual, chat answers are not streamed, and there is no authentication or per-user conversation isolation. Do not expose this development API publicly without adding appropriate access controls, operational safeguards, and production configuration.
+The repository's [`docs/Plan.md`](docs/Plan.md) and [`docs/PRD.md`](docs/PRD.md) describe the broader project goals. The README documents the current code: ingestion runs manually or through a standalone daily scheduler, chat answers are not streamed, and there is no authentication or per-user conversation isolation. Do not expose this development API publicly without adding appropriate access controls, operational safeguards, and production configuration.

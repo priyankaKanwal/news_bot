@@ -39,6 +39,10 @@ export function getConversations() {
   return request('/api/conversations')
 }
 
+export function getRecentArticles() {
+  return request('/api/articles/recent?limit=6')
+}
+
 export function getConversation(conversationId) {
   return request(`/api/conversations/${conversationId}`)
 }
