@@ -173,6 +173,12 @@ export default function App() {
              ? { ...message, text: message.text + event.text }
              : message
          ))
+       } else if (event.type === 'done') {
+         setMessages((prev) => prev.map((message) =>
+           message.id === botMessageId
+             ? { ...message, sources: event.sources }
+             : message
+         ))
        }
      })
      const savedConversationId = data.conversation_id

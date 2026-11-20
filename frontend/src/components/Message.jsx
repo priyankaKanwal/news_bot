@@ -1,18 +1,40 @@
-function formatDate(iso) {
-  if (!iso) return ''
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 // Only allow http(s) links - article URLs come from external feeds.
 function isSafeUrl(url) {
   return typeof url === 'string' && /^https?:\/\//i.test(url)
 }
 
+function renderAnswer(text, sources) {
+  return text.split(/(\[\d+\])/g).map((part, index) => {
+    const match = part.match(/^\[(\d+)\]$/)
+    if (!match) return part
+
+    const source = sources?.[Number(match[1]) - 1]
+    if (!source) return part
+
+    const label = source.publisher || source.title || `Source ${match[1]}`
+    if (!isSafeUrl(source.url)) {
+      return <span key={index} title={source.title}>{`[${label}]`}</span>
+    }
+
+    return (
+      <a
+        key={index}
+        className="font-semibold text-[var(--accent)] underline decoration-[var(--accent)]/40 underline-offset-2 hover:decoration-[var(--accent)]"
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={source.title}
+      >
+        [{label}]
+      </a>
+    )
+  })
+}
+
 export default function Message({ message }) {
   const { role, text, sources, isError } = message
   const isUser = role === 'user'
+  const hasCitations = sources?.some((_, index) => text.includes(`[${index + 1}]`))
 
   return (
     <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : ''}`}>
@@ -22,30 +44,29 @@ export default function Message({ message }) {
         </div>
       )}
       <div className={`max-w-[78%] rounded-xl border px-4 py-[13px] leading-[1.65] shadow-[0_1px_2px_rgba(20,24,40,0.025)] max-[760px]:max-w-[88%] ${isUser ? 'rounded-br-[4px] border-[var(--accent)] bg-[var(--accent)] text-white shadow-[0_8px_20px_var(--accent-shadow)]' : `rounded-tl-[4px] ${isError ? 'border-[var(--error-border)] bg-[var(--error-bg)] text-[var(--error)]' : 'border-[var(--border)] bg-[var(--message-bg)]'}`}`}>
-        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</div>
-        {sources?.length > 0 && (
-          <div className="mt-[14px] border-t border-[var(--border)] pt-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-[var(--muted)]">Sources</span>
-            <ul className="mt-2 grid list-none grid-cols-2 gap-2 p-0 max-[760px]:grid-cols-1">
-              {sources.map((s) => {
-                const date = formatDate(s.published_at)
-                return (
-                  <li className="flex min-w-0 flex-col gap-1 rounded-[9px] border border-[var(--border)] bg-[var(--surface)] px-[10px] py-[9px]" key={s.url ?? s.title} title={`Relevance score: ${s.score.toFixed(3)}`}>
-                    {isSafeUrl(s.url) ? (
-                      <a className="text-[13px] font-bold leading-[1.35] text-[var(--text)] no-underline [overflow-wrap:anywhere] hover:text-[var(--accent)]" href={s.url} target="_blank" rel="noopener noreferrer">
-                        {s.title}
-                      </a>
-                    ) : (
-                      <span className="text-[13px] font-bold leading-[1.35] text-[var(--text)] [overflow-wrap:anywhere]">{s.title}</span>
-                    )}
-                    <span className="text-[11px] text-[var(--muted)]">
-                      {s.publisher}
-                      {date && ` · ${date}`}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{renderAnswer(text, sources)}</div>
+        {!hasCitations && sources?.length > 0 && (
+          <div className="mt-2 text-[12px] text-[var(--muted)]">
+            Related articles:{' '}
+            {sources.map((source, index) => {
+              const label = source.publisher || source.title || `Source ${index + 1}`
+              return (
+                <span key={`${source.url ?? source.title}-${index}`}>
+                  {index > 0 && ', '}
+                  {isSafeUrl(source.url) ? (
+                    <a
+                      className="font-semibold text-[var(--accent)] underline underline-offset-2"
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={source.title}
+                    >
+                      {label}
+                    </a>
+                  ) : label}
+                </span>
+              )
+            })}
           </div>
         )}
       </div>
