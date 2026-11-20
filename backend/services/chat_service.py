@@ -1,40 +1,70 @@
-
-from pathlib import Path
-
-from rag.answer_generator import generate_answer
+from rag.answer_generator import generate_answer, stream_answer
 
 
 def process_chat(question: str):
-    # Step 1: Call our existing RAG function
     answer, results = generate_answer(question, top_k=7)
 
-    # Step 2: Prepare unique source documents
-    source_scores = {}
+    # Keep one source per article, using its best chunk score.
+    articles = {}
 
     for document, score in results:
-        source_path = document.metadata.get("source", "Unknown")
+        meta = document.metadata
 
-        # Extract only the filename
-        source_name = Path(source_path).name
+        key = meta.get("article_id") or meta.get("article_url") or meta.get("title")
 
-        # Keep the highest score for each source
-        if (
-            source_name not in source_scores
-            or score > source_scores[source_name]
-        ):
-            source_scores[source_name] = float(score)
+        if key not in articles or score > articles[key]["score"]:
+            articles[key] = {
+                "title": meta.get("title", "Untitled"),
+                "publisher": meta.get("publisher", "Unknown"),
+                "published_at": meta.get("published_at"),
+                "url": meta.get("article_url"),
+                "score": float(score),
+            }
 
-    # Step 3: Convert source information into a list
-    sources = [
-        {
-            "name": name,
-            "score": score
-        }
-        for name, score in source_scores.items()
-    ]
+    sources = sorted(
+        articles.values(),
+        key=lambda source: source["score"],
+        reverse=True
+    )
 
-    # Step 4: Return answer and sources
     return {
         "answer": answer,
         "sources": sources
     }
+
+
+def sources_from_results(results):
+    """Convert retrieved document chunks into unique article sources."""
+    articles = {}
+
+    for document, score in results:
+        meta = document.metadata
+        key = meta.get("article_id") or meta.get("article_url") or meta.get("title")
+
+        if key not in articles or score > articles[key]["score"]:
+            articles[key] = {
+                "title": meta.get("title", "Untitled"),
+                "publisher": meta.get("publisher", "Unknown"),
+                "published_at": meta.get("published_at"),
+                "url": meta.get("article_url"),
+                "score": float(score),
+            }
+
+    return sorted(
+        articles.values(),
+        key=lambda source: source["score"],
+        reverse=True,
+    )
+
+
+def process_chat_stream(question: str):
+    """Yield streaming LLM events and the final response sources."""
+    for event in stream_answer(question, top_k=7):
+        if event["type"] == "done":
+            yield {
+                "type": "done",
+                "answer": event["answer"],
+                "sources": sources_from_results(event["results"]),
+            }
+        else:
+            yield event

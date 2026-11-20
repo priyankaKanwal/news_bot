@@ -1,22 +1,53 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
-    """What the frontend sends us."""
+    """Chat request payload."""
 
-    # min_length / max_length: FastAPI rejects bad input automatically (422)
     question: str = Field(..., min_length=3, max_length=500)
+    conversation_id: UUID | None = None
 
 
 class Source(BaseModel):
-    """One source document used to build the answer."""
+    """News source returned with an answer."""
 
-    name: str
+    title: str
+    publisher: str
+    published_at: str | None = None 
+    url: str | None = None
     score: float
 
 
 class ChatResponse(BaseModel):
-    """What we send back to the frontend."""
+    """Chat response payload."""
 
+    conversation_id: UUID
     answer: str
     sources: list[Source]
+
+
+class StoredMessage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    role: Literal["user", "assistant"]
+    content: str
+    sources: list[Source]
+    created_at: datetime
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationDetail(ConversationSummary):
+    messages: list[StoredMessage]

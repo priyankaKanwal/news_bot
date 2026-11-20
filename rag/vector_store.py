@@ -1,29 +1,89 @@
+from functools import lru_cache
 
-from uuid import uuid5, NAMESPACE_URL
-
-from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    PayloadSchemaType,
+    Range,
+    VectorParams,
+)
 
-from rag.text_splitter import split_news_documents
+from ingestion.date_filter import cutoff_timestamp
+from rag.config import (
+    COLLECTION_NAME,
+    EMBEDDING_MODEL,
+    EMBEDDING_QUERY_INSTRUCTION,
+    QDRANT_PATH,
+    QDRANT_URL,
+    VECTOR_SIZE,
+)
 
-load_dotenv()
 
-# Qdrant configuration
-COLLECTION_NAME = "news_articles"
-QDRANT_PATH = "qdrant_db"
-VECTOR_SIZE = 3072
+PUBLISHED_TS_KEY = "metadata.published_ts"
+
+
+def get_client():
+    """Connect to Qdrant in server or local-file mode."""
+    if QDRANT_URL:
+        return QdrantClient(url=QDRANT_URL)
+
+    return QdrantClient(path=QDRANT_PATH)
+
+
+@lru_cache(maxsize=1)
+def get_embedding_model():
+    """Return a cached, normalized local embedding model."""
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        encode_kwargs={"normalize_embeddings": True},
+        query_encode_kwargs={
+            "normalize_embeddings": True,
+            "prompt": EMBEDDING_QUERY_INSTRUCTION,
+        },
+    )
+
+
+def build_recency_filter(extra_conditions=None):
+    """Filter Qdrant results to articles in ingestion's 30-day window."""
+    conditions = [
+        FieldCondition(
+            key=PUBLISHED_TS_KEY,
+            range=Range(gte=cutoff_timestamp()),
+        )
+    ]
+    if extra_conditions:
+        conditions.extend(extra_conditions)
+
+    return Filter(must=conditions)
 
 
 def create_vector_store():
+    """Connect to Qdrant and create the collection if needed."""
+    client = get_client()
 
-    # Step 2: Create Qdrant client
-    client = QdrantClient(path=QDRANT_PATH)
+    if client.collection_exists(COLLECTION_NAME):
 
-    # Step 3: Create collection if it doesn't exist
-    if not client.collection_exists(COLLECTION_NAME):
+        stored_size = client.get_collection(
+            COLLECTION_NAME
+        ).config.params.vectors.size
+
+        if stored_size != VECTOR_SIZE:
+
+            client.close()
+
+            raise RuntimeError(
+                f"Collection '{COLLECTION_NAME}' stores {stored_size}-dim "
+                f"vectors but the current embedding model produces "
+                f"{VECTOR_SIZE}-dim vectors. Delete the collection "
+                f"(or the '{QDRANT_PATH}' folder in local mode) and "
+                f"repopulate the collection with the current model."
+            )
+
+    else:
 
         client.create_collection(
             collection_name=COLLECTION_NAME,
@@ -35,57 +95,20 @@ def create_vector_store():
 
         print("Qdrant collection created!")
 
-    # Step 4: Initialize Gemini embedding model
-    # Leave task_type unset:
-    # LangChain's Google integration defaults to
-    # RETRIEVAL_DOCUMENT for documents and
-    # RETRIEVAL_QUERY for queries.
-    embedding_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001"
-    )
+    if QDRANT_URL:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name=PUBLISHED_TS_KEY,
+            field_schema=PayloadSchemaType.FLOAT,
+        )
 
-    # Step 5: Connect LangChain with Qdrant
+    embedding_model = get_embedding_model()
+
     vector_store = QdrantVectorStore(
         client=client,
         collection_name=COLLECTION_NAME,
         embedding=embedding_model
     )
-
-    # Step 6: Add documents only if collection is empty
-    existing_count = client.count(
-        collection_name=COLLECTION_NAME
-    ).count
-
-    if existing_count == 0:
-
-        # Load and split documents only when they need to be stored
-        chunks = split_news_documents()
-
-        print("Total chunks:", len(chunks))
-
-        # Generate stable IDs to identify each chunk
-        ids = [
-            str(uuid5(
-                NAMESPACE_URL,
-                f"{chunk.metadata.get('source')}:{chunk.metadata.get('start_index')}:{chunk.page_content}"
-            ))
-            for chunk in chunks
-        ]
-
-        vector_store.add_documents(
-            documents=chunks,
-            ids=ids
-        )
-
-        print("News chunks stored in Qdrant!")
-
-    else:
-        print("Collection already contains", existing_count, "chunks.")
-        print("Skipping document insertion.")
-
-    print("Total vectors in Qdrant:", client.count(
-        collection_name=COLLECTION_NAME
-    ).count)
 
     return vector_store, client
 
@@ -94,23 +117,27 @@ if __name__ == "__main__":
 
     vector_store, client = create_vector_store()
 
-    # Step 7: Ask a question
+    print("Chunks in Qdrant:", client.count(COLLECTION_NAME).count)
+
     question = input("\nAsk a question about the news: ")
 
-    # Step 8: Search for similar news chunks
     results = vector_store.similarity_search_with_score(
         question,
-        k=7
+        k=7,
+        filter=build_recency_filter(),
     )
 
     print("\nRelevant news chunks:\n")
 
     for index, (document, score) in enumerate(results):
 
+        meta = document.metadata
+
         print(f"\nResult {index + 1}")
         print("Similarity score:", round(score, 4))
-        print("Source:", document.metadata.get("source"))
-        print("Content:", document.page_content)
+        print("Title:", meta.get("title"))
+        print("Publisher:", meta.get("publisher"), "|", meta.get("published_at"))
+        print("URL:", meta.get("article_url"))
         print("-" * 60)
 
     client.close()
