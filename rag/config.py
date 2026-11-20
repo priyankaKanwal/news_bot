@@ -32,6 +32,11 @@ SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.70"))
 RERANKER_MODEL = "BAAI/bge-reranker-base"
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "3"))
 USE_RERANKER = os.getenv("USE_RERANKER", "1") != "0"
+NEAR_DUPLICATE_THRESHOLD = float(
+    os.getenv("NEAR_DUPLICATE_THRESHOLD", "0.92")
+)
+if not 0.0 <= NEAR_DUPLICATE_THRESHOLD <= 1.0:
+    raise ValueError("NEAR_DUPLICATE_THRESHOLD must be between 0 and 1.")
 
 # Vector database
 # Server mode supports multiple processes; local mode allows only one.

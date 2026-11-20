@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { askQuestion, deleteConversation, getConversation, getConversations, getRecentArticles } from './api'
+import { askQuestionStream, deleteConversation, getConversation, getConversations, getRecentArticles } from './api'
 import Message from './components/Message'
 import ChatInput from './components/ChatInput'
 import RecentNews from './components/RecentNews'
@@ -156,10 +156,25 @@ export default function App() {
    const conversationId = activeConversationRef.current
    const messageId = `pending-${Date.now()}`
    setMessages((prev) => [...prev, { id: messageId, role: 'user', text }])
+   const botMessageId = `streaming-${Date.now()}`
+   setMessages((prev) => [
+     ...prev,
+     { id: botMessageId, role: 'bot', text: '' },
+   ])
    setLoading(true)
 
    try {
-     const data = await askQuestion(text, conversationId)
+     const data = await askQuestionStream(text, conversationId, (event) => {
+       if (selectionVersion !== selectionVersionRef.current) return
+
+       if (event.type === 'token') {
+         setMessages((prev) => prev.map((message) =>
+           message.id === botMessageId
+             ? { ...message, text: message.text + event.text }
+             : message
+         ))
+       }
+     })
      const savedConversationId = data.conversation_id
      await refreshHistory()
 
@@ -181,7 +196,7 @@ export default function App() {
      }
      if (selectionVersion === selectionVersionRef.current) {
        setMessages((prev) => [
-         ...prev,
+         ...prev.filter((message) => message.id !== botMessageId),
          { id: `error-${Date.now()}`, role: 'bot', text: error.message, isError: true },
        ])
      }

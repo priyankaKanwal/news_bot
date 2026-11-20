@@ -35,6 +35,68 @@ export function askQuestion(question, conversationId) {
   })
 }
 
+export async function askQuestionStream(question, conversationId, onEvent) {
+  let response
+  try {
+    response = await fetch(`${API_URL}/api/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, conversation_id: conversationId }),
+    })
+  } catch (error) {
+    if (error.name === 'AbortError') throw error
+    throw new Error(`Cannot reach the server. Is the backend running on ${API_URL}?`, { cause: error })
+  }
+
+  if (!response.ok) {
+    let detail = 'Something went wrong. Please try again.'
+    try {
+      const body = await response.json()
+      if (typeof body.detail === 'string') detail = body.detail
+    } catch {
+      // Use the generic message when FastAPI does not return JSON.
+    }
+    const error = new Error(detail)
+    error.conversationId = response.headers.get('X-Conversation-ID')
+    throw error
+  }
+
+  const conversationIdHeader = response.headers.get('X-Conversation-ID')
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Streaming is not supported by this server response.')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() ?? ''
+
+    for (const chunk of chunks) {
+      const line = chunk.split('\n').find((item) => item.startsWith('data: '))
+      if (!line) continue
+
+      const event = JSON.parse(line.slice(6))
+      onEvent(event)
+      if (event.type === 'done' || event.type === 'error') result = event
+    }
+  }
+
+  if (!result) throw new Error('The answer stream ended before completion.')
+  if (result.type === 'error') throw new Error(result.message)
+
+  return {
+    conversation_id: conversationIdHeader,
+    answer: result.answer,
+    sources: result.sources,
+  }
+}
+
 export function getConversations() {
   return request('/api/conversations')
 }

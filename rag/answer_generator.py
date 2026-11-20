@@ -319,6 +319,77 @@ def generate_answer(
             client.close()
 
 
+def stream_answer(question, top_k=RETRIEVE_TOP_K, vector_store=None):
+    """Retrieve recent context and stream answer tokens from the LLM."""
+    client = None
+
+    if vector_store is None:
+        vector_store, client = create_vector_store()
+
+    try:
+        results = vector_store.similarity_search_with_relevance_scores(
+            question,
+            k=top_k,
+            score_threshold=SCORE_THRESHOLD,
+            filter=build_recency_filter(),
+        )
+        browsing = False
+
+        if not results and is_browse_question(question):
+            results = fetch_latest_articles(question)
+            browsing = bool(results)
+
+        if USE_RERANKER and not browsing:
+            results = rerank_documents(
+                question=question,
+                results=results,
+                top_n=RERANK_TOP_N,
+            )
+        elif not browsing:
+            results = results[:RERANK_TOP_N]
+
+        if not results:
+            yield {
+                "type": "done",
+                "answer": NOT_ENOUGH_INFO,
+                "results": [],
+            }
+            return
+
+        context = _format_context(results)
+        chain = browse_chain if browsing else answer_chain
+        answer_parts = []
+
+        for token in chain.stream({
+            "question": question,
+            "context": context,
+        }):
+            answer_parts.append(token)
+            yield {
+                "type": "token",
+                "text": token,
+            }
+
+        answer = "".join(answer_parts)
+
+        if _is_refusal(answer):
+            yield {
+                "type": "done",
+                "answer": NOT_ENOUGH_INFO,
+                "results": [],
+            }
+            return
+
+        yield {
+            "type": "done",
+            "answer": answer,
+            "results": results,
+        }
+    finally:
+        if client is not None:
+            client.close()
+
+
 if __name__ == "__main__":
 
     question = input("\nAsk a question: ")

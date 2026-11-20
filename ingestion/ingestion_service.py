@@ -19,11 +19,11 @@ from ingestion.date_filter import (
     delete_expired_articles,
     filter_articles,
 )
-from ingestion.deduplicator import deduplicate_articles
+from ingestion.deduplicator import deduplicate_articles, detect_near_duplicates
 from ingestion.fetcher import FeedFetchError, fetch_feed
 from ingestion.normalizer import normalize_entry
-from rag.config import COLLECTION_NAME
-from rag.vector_store import create_vector_store
+from rag.config import COLLECTION_NAME, NEAR_DUPLICATE_THRESHOLD
+from rag.vector_store import create_vector_store, get_embedding_model
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,39 @@ def _known_article_ids(client) -> set[str]:
 
         if offset is None:
             return article_ids
+
+
+def _known_article_context(client) -> list[dict]:
+    """Load lightweight stored text and publication dates for duplicate checks."""
+    articles = []
+    offset = None
+
+    while True:
+        points, offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=256,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for point in points:
+            payload = point.payload or {}
+            metadata = payload.get("metadata", {})
+            published_ts = metadata.get("published_ts")
+            if published_ts is None:
+                continue
+
+            articles.append({
+                "title": metadata.get("title", ""),
+                "content": payload.get("page_content", ""),
+                "published_at": datetime.fromtimestamp(
+                    float(published_ts),
+                    tz=timezone.utc,
+                ),
+            })
+
+        if offset is None:
+            return articles
 
 
 def _process_feed(feed: FeedConfig, now: datetime) -> tuple[list[CleanedArticle], dict]:
@@ -165,6 +198,7 @@ def run_ingestion() -> dict:
                 delete(Article).where(Article.published_at < cutoff_datetime(now))
             ).rowcount
         known_ids = _known_article_ids(client)
+        known_articles = _known_article_context(client)
 
         articles = []
         feed_reports = []
@@ -177,6 +211,13 @@ def run_ingestion() -> dict:
             failed_feeds += stats["error"] is not None
 
         unique_articles, duplicates_removed = deduplicate_articles(articles)
+        unique_articles, near_duplicates_removed = detect_near_duplicates(
+            unique_articles,
+            get_embedding_model(),
+            threshold=NEAR_DUPLICATE_THRESHOLD,
+            known_articles=known_articles,
+        )
+        duplicates_removed += near_duplicates_removed
         articles_to_index = [
             article
             for article in unique_articles

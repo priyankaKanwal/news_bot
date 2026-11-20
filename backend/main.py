@@ -4,6 +4,8 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,7 +18,7 @@ from backend.schemas.chat_schema import (
     ConversationDetail,
     ConversationSummary,
 )
-from backend.services.chat_service import process_chat
+from backend.services.chat_service import process_chat, process_chat_stream
 from ingestion.ingestion_service import run_ingestion
 
 
@@ -166,3 +168,71 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
         "conversation_id": conversation_id,
         **result,
     }
+
+
+def _new_conversation(request: ChatRequest, db: Session) -> Conversation:
+    if request.conversation_id is not None:
+        conversation = db.get(Conversation, request.conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return conversation
+
+    title = request.question.strip()
+    if len(title) > 117:
+        title = title[:117].rstrip() + "..."
+    conversation = Conversation(title=title)
+    db.add(conversation)
+    db.flush()
+    return conversation
+
+
+@app.post("/api/chat/stream")
+def stream_chat(request: ChatRequest, db: Session = Depends(get_db)):
+    conversation = _new_conversation(request, db)
+    conversation_id = conversation.id
+
+    db.add(
+        ChatMessage(
+            conversation_id=conversation_id,
+            role="user",
+            content=request.question,
+        )
+    )
+    conversation.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    def events():
+        answer = ""
+        sources = []
+
+        try:
+            for event in process_chat_stream(request.question):
+                if event["type"] == "done":
+                    answer = event["answer"]
+                    sources = event["sources"]
+
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            db.add(
+                ChatMessage(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=answer,
+                    sources=sources,
+                )
+            )
+            conversation.updated_at = datetime.now(timezone.utc)
+            db.commit()
+
+        except Exception as error:
+            print("Streaming chat error:", repr(error), flush=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate an answer. Please try again.'}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Conversation-ID": str(conversation_id),
+        },
+    )

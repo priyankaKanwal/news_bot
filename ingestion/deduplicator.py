@@ -3,6 +3,8 @@
 import hashlib
 import re
 from collections.abc import Iterable
+from datetime import timedelta
+from math import sqrt
 
 from ingestion.cleaner import CleanedArticle
 
@@ -53,3 +55,78 @@ def deduplicate_articles(
             seen_guids.add(guid_key)
 
     return unique, removed
+
+
+def _normalized_title(article: CleanedArticle) -> str:
+    text = article["title"].casefold()
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _embedding_similarity(left: list[float], right: list[float]) -> float:
+    """Compute cosine similarity between normalized or unnormalized vectors."""
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = sqrt(sum(value * value for value in left))
+    right_norm = sqrt(sum(value * value for value in right))
+    if not left_norm or not right_norm:
+        return 0.0
+    return dot / (left_norm * right_norm)
+
+
+def detect_near_duplicates(
+    articles: Iterable[CleanedArticle],
+    embedding_model,
+    threshold: float = 0.92,
+    time_window: timedelta = timedelta(days=7),
+    known_articles: Iterable[dict] | None = None,
+) -> tuple[list[CleanedArticle], int]:
+    """Remove semantically near-identical articles before embedding them.
+
+    Short titles are not enough for this check, so each article uses title plus
+    cleaned content. Candidates are limited to a publication-time window and
+    lower-quality title-only matches are not used by themselves.
+    """
+    article_list = list(articles)
+    if len(article_list) < 2:
+        return article_list, 0
+
+    texts = [
+        f"{_normalized_title(article)}\n\n{article['content']}".strip()
+        for article in article_list
+    ]
+    known_article_list = list(known_articles or [])
+    known_texts = [
+        f"{article.get('title', '')}\n\n{article.get('content', '')}".strip()
+        for article in known_article_list
+    ]
+    vectors = embedding_model.embed_documents(texts + known_texts)
+    article_vectors = vectors[:len(article_list)]
+    known_vectors = vectors[len(article_list):]
+
+    kept: list[CleanedArticle] = []
+    kept_vectors: list[list[float]] = []
+    removed = 0
+
+    for article, vector in zip(article_list, article_vectors):
+        duplicate = False
+        candidates = list(zip(kept, kept_vectors))
+        candidates.extend(zip(known_article_list, known_vectors))
+
+        for candidate, candidate_vector in candidates:
+            time_distance = abs(
+                article["published_at"] - candidate["published_at"]
+            )
+            if time_distance > time_window:
+                continue
+
+            if _embedding_similarity(vector, candidate_vector) >= threshold:
+                duplicate = True
+                break
+
+        if duplicate:
+            removed += 1
+            continue
+
+        kept.append(article)
+        kept_vectors.append(vector)
+
+    return kept, removed
