@@ -2,7 +2,7 @@
 
 An AI-powered news chatbot that collects recent articles from configured RSS feeds, indexes them for semantic search, and answers questions with links to the source articles. Chat conversations are saved so they can be reopened or deleted from the frontend.
 
-The current implementation uses **local Ollama** for answer generation, **Hugging Face sentence-transformer models** for embeddings and reranking, **Qdrant** for article chunks, and **PostgreSQL** for chat history.
+The current implementation uses **Google Gemini** (via `langchain-google-genai`) for answer generation, **Jina AI** (`jina-embeddings-v3`) for embeddings, a local **Hugging Face cross-encoder** for reranking, **Qdrant** for article chunks, and **PostgreSQL** for chat history.
 
 ## What it does
 
@@ -10,7 +10,7 @@ The current implementation uses **local Ollama** for answer generation, **Huggin
 - Cleans article text and canonicalizes URLs; skips invalid articles, missing dates, and articles outside the last 30 days.
 - Deduplicates by article ID, canonical URL, publisher-scoped feed GUID, and normalized content.
 - Splits articles into overlapping text chunks and stores them with metadata in Qdrant.
-- Retrieves relevant recent news, optionally reranks it, and asks a local LLM to answer using only the retrieved articles.
+- Retrieves relevant recent news, optionally reranks it, and asks Gemini to answer using only the retrieved articles.
 - Provides a recency-based roundup for broad questions such as “What are the latest headlines?”
 - Stores conversations and messages in PostgreSQL and displays them in the React chat interface.
 - Returns source titles, publishers, publication dates, links, and relevance scores with answers.
@@ -31,7 +31,7 @@ React frontend ── HTTP ──► FastAPI chat API
                                         │
                               retrieve and rerank
                                         │
-                                 local Ollama
+                                 Google Gemini
                                         │
                            answer and article sources
 
@@ -60,10 +60,11 @@ does not run inside the FastAPI application.
 - Python 3.11
 - Node.js and npm (the frontend uses Vite)
 - Docker Desktop with Docker Compose
-- [Ollama](https://ollama.com/) installed and running locally
-- Enough memory and disk space for the local embedding and reranker models
+- A Google Gemini API key ([Google AI Studio](https://aistudio.google.com/apikey))
+- A Jina AI API key ([jina.ai](https://jina.ai/embeddings))
+- Enough memory and disk space for the local reranker model
 
-The first ingestion or chat request may download the configured Hugging Face models. Ollama must have the configured LLM model available locally.
+The first chat request may download the Hugging Face reranker model. Embedding and answer generation call hosted APIs, so ingestion and chat need internet access and use your Jina and Gemini quotas.
 
 ## Setup
 
@@ -88,7 +89,7 @@ If PowerShell prevents environment activation, either allow local activation scr
 
 ### 2. Configure environment variables
 
-Create a `.env` file in the repository root. The following values work with the development defaults in `docker-compose.yml`:
+Copy [`.env.example`](.env.example) to `.env` in the repository root and fill in the API keys. The following values work with the development defaults in `docker-compose.yml`:
 
 ```dotenv
 POSTGRES_DB=news_bot
@@ -97,8 +98,10 @@ POSTGRES_PASSWORD=news_bot_dev
 DATABASE_URL=postgresql+psycopg://news_bot:news_bot_dev@localhost:5434/news_bot
 
 QDRANT_URL=http://localhost:6333
-OLLAMA_URL=http://localhost:11434
-LLM_MODEL=llama3.2
+
+GOOGLE_API_KEY=your-gemini-api-key
+LLM_MODEL=gemini-2.5-flash
+JINA_API_KEY=your-jina-api-key
 
 INGESTION_SCHEDULE_HOUR=2
 INGESTION_SCHEDULE_MINUTE=0
@@ -116,9 +119,11 @@ Optional RAG settings:
 | Variable | Default | Description |
 |---|---:|---|
 | `RETRIEVE_TOP_K` | `10` | Maximum candidate chunks to retrieve |
-| `SCORE_THRESHOLD` | `0.70` | Minimum vector relevance score |
+| `LLM_MODEL` | `gemini-2.5-flash` | Gemini model used for answers |
+| `SCORE_THRESHOLD` | `0.60` | Minimum vector relevance score, `(cosine + 1) / 2` |
 | `RERANK_TOP_N` | `3` | Number of chunks kept after reranking |
 | `USE_RERANKER` | `1` | Set to `0` to disable the cross-encoder reranker |
+| `NEAR_DUPLICATE_THRESHOLD` | `0.88` | Cosine similarity at which two articles count as the same story |
 
 Set `QDRANT_URL` to an empty value to use Qdrant's local on-disk mode (`qdrant_db`) instead of the Docker service.
 
@@ -134,17 +139,7 @@ docker compose ps
 
 The databases use named Docker volumes and persist across container restarts. **`docker compose down -v` deletes the stored Qdrant and PostgreSQL data.**
 
-### 4. Prepare Ollama
-
-Start Ollama if it is not already running, then download the configured model:
-
-```powershell
-ollama pull llama3.2
-```
-
-If you change `LLM_MODEL`, pull that model instead and update the `.env` value.
-
-### 5. Ingest news articles
+### 4. Ingest news articles
 
 From the repository root, with the Python environment active:
 
@@ -166,7 +161,7 @@ request failures using the existing fetcher, and continues processing other feed
 when one feed fails. Run only one scheduler instance to avoid overlapping scheduled
 runs. Stop it with `Ctrl+C`.
 
-### 6. Start the API
+### 5. Start the API
 
 In another terminal, from the repository root:
 
@@ -177,7 +172,7 @@ python -m uvicorn backend.main:app --reload
 
 The API is available at <http://localhost:8000>. Interactive API documentation is at <http://localhost:8000/docs>. On startup, the app creates the conversation tables in PostgreSQL if they do not already exist.
 
-### 7. Start the frontend
+### 6. Start the frontend
 
 In another terminal:
 
@@ -201,9 +196,7 @@ After completing the one-time setup above, start the app in separate terminals. 
    docker compose up -d
    ```
 
-2. **Start Ollama** (Terminal 2): open the Ollama desktop app, or run `ollama serve` if it is not already running. Make sure the configured model has been downloaded (for example, run `ollama pull llama3.2` once).
-
-3. **Start scheduled ingestion** (Terminal 3):
+2. **Start scheduled ingestion** (Terminal 2):
 
    ```powershell
    .\venv\Scripts\python.exe -m ingestion.scheduler
@@ -213,13 +206,13 @@ After completing the one-time setup above, start the app in separate terminals. 
    immediate one-off ingestion instead, use
    `.\venv\Scripts\python.exe -m ingestion.ingestion_service` in another terminal.
 
-4. **Start the backend API** (Terminal 4):
+3. **Start the backend API** (Terminal 3):
 
    ```powershell
    .\venv\Scripts\python.exe -m uvicorn backend.main:app --reload
    ```
 
-5. **Start the frontend** (Terminal 5):
+4. **Start the frontend** (Terminal 4):
 
    ```powershell
    cd frontend
@@ -228,9 +221,9 @@ After completing the one-time setup above, start the app in separate terminals. 
 
    On the first run, install the frontend dependencies before starting Vite with `npm ci`.
 
-6. Open <http://localhost:5173> and ask a question. The API docs are at <http://localhost:8000/docs>, and the Qdrant dashboard is at <http://localhost:6333/dashboard>.
+5. Open <http://localhost:5173> and ask a question. The API docs are at <http://localhost:8000/docs>, and the Qdrant dashboard is at <http://localhost:6333/dashboard>.
 
-To stop the app, press `Ctrl+C` in the frontend, backend, and any terminal running Ollama. Stop the databases with `docker compose down` from the repository root. This keeps their data; do not add `-v` unless you intend to delete it.
+To stop the app, press `Ctrl+C` in the frontend, backend, and scheduler terminals. Stop the databases with `docker compose down` from the repository root. This keeps their data; do not add `-v` unless you intend to delete it.
 
 ## API
 
@@ -329,10 +322,11 @@ npm run build
 
 - **API cannot connect to PostgreSQL:** confirm `docker compose ps` shows PostgreSQL as healthy, and that `DATABASE_URL` uses port `5434`.
 - **API or ingestion cannot connect to Qdrant:** confirm the Qdrant container is running and `QDRANT_URL` is `http://localhost:6333`.
-- **Ollama connection or model error:** start Ollama, verify the `OLLAMA_URL`, and run `ollama pull <model-name>` for the configured model.
+- **Gemini error (`GOOGLE_API_KEY is not set`, 401/403, or model not found):** check `GOOGLE_API_KEY` in `.env` and that `LLM_MODEL` is a model your key can use.
+- **Jina error (`JINA_API_KEY is not set`, 401, or 429):** check `JINA_API_KEY`; 429 means the rate limit or token quota was hit (requests are retried with backoff).
 - **No articles are stored:** inspect the ingestion report. Entries with missing/invalid publication dates and entries older than 30 days are skipped. Verify that feed URLs in `feeds.yaml` are reachable and return RSS/Atom content.
 - **No sources or “not enough information” answer:** rerun ingestion and check that recent articles have been stored; retrieval also applies a relevance threshold.
-- **Embedding dimension error:** the existing Qdrant collection was created with a different vector size/model. Back up anything needed before deleting and recreating the collection, then rerun ingestion.
+- **Embedding dimension error:** the existing Qdrant collection was created with a different vector size/model (for example, 384-dim vectors from the earlier `bge-small` model; Jina produces 1024-dim). Back up anything needed before deleting and recreating the collection, then rerun ingestion.
 - **Frontend cannot reach the API:** ensure the API is running on port `8000`; if using a different address, set `VITE_API_URL` and allow that frontend origin in the backend CORS settings.
 
 ## Current scope and planned work

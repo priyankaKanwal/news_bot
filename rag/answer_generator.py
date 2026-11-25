@@ -1,15 +1,15 @@
 import re
 
-from langchain_ollama import ChatOllama
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from sentence_transformers import CrossEncoder
 
 from rag.config import (
+    GOOGLE_API_KEY,
     LLM_MODEL,
     LLM_TEMPERATURE,
     LLM_TIMEOUT,
-    OLLAMA_URL,
     RERANK_TOP_N,
     RERANKER_MODEL,
     RETRIEVE_TOP_K,
@@ -17,14 +17,20 @@ from rag.config import (
     USE_RERANKER,
 )
 from rag.browse import fetch_latest_articles, is_browse_question
+from rag.token_usage import TOKEN_TRACKER
 from rag.vector_store import build_recency_filter, create_vector_store
 
 
-llm = ChatOllama(
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY is not set. Add it to your .env file.")
+
+llm = ChatGoogleGenerativeAI(
     model=LLM_MODEL,
-    base_url=OLLAMA_URL,
+    google_api_key=GOOGLE_API_KEY,
     temperature=LLM_TEMPERATURE,
-    client_kwargs={"timeout": LLM_TIMEOUT},
+    timeout=LLM_TIMEOUT,
+    max_retries=2,
+    callbacks=[TOKEN_TRACKER],
 )
 
 

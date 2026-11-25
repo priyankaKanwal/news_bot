@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -16,11 +15,12 @@ from ingestion.date_filter import cutoff_timestamp
 from rag.config import (
     COLLECTION_NAME,
     EMBEDDING_MODEL,
-    EMBEDDING_QUERY_INSTRUCTION,
+    JINA_API_KEY,
     QDRANT_PATH,
     QDRANT_URL,
     VECTOR_SIZE,
 )
+from rag.jina_embeddings import JinaEmbeddings
 
 
 PUBLISHED_TS_KEY = "metadata.published_ts"
@@ -36,14 +36,11 @@ def get_client():
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
-    """Return a cached, normalized local embedding model."""
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        encode_kwargs={"normalize_embeddings": True},
-        query_encode_kwargs={
-            "normalize_embeddings": True,
-            "prompt": EMBEDDING_QUERY_INSTRUCTION,
-        },
+    """Return a cached Jina embedding client (normalized vectors)."""
+    return JinaEmbeddings(
+        api_key=JINA_API_KEY,
+        model=EMBEDDING_MODEL,
+        dimensions=VECTOR_SIZE,
     )
 
 

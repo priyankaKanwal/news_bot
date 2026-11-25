@@ -75,7 +75,7 @@ def _embedding_similarity(left: list[float], right: list[float]) -> float:
 def detect_near_duplicates(
     articles: Iterable[CleanedArticle],
     embedding_model,
-    threshold: float = 0.92,
+    threshold: float = 0.88,
     time_window: timedelta = timedelta(days=7),
     known_articles: Iterable[dict] | None = None,
 ) -> tuple[list[CleanedArticle], int]:
@@ -84,23 +84,32 @@ def detect_near_duplicates(
     Short titles are not enough for this check, so each article uses title plus
     cleaned content. Candidates are limited to a publication-time window and
     lower-quality title-only matches are not used by themselves.
+
+    Known articles should carry their stored Qdrant vector under "vector" so
+    they are not re-embedded (and re-billed) on every run; any without one
+    are embedded here.
     """
     article_list = list(articles)
-    if len(article_list) < 2:
+    known_article_list = list(known_articles or [])
+    if not article_list or (len(article_list) < 2 and not known_article_list):
         return article_list, 0
 
     texts = [
         f"{_normalized_title(article)}\n\n{article['content']}".strip()
         for article in article_list
     ]
-    known_article_list = list(known_articles or [])
-    known_texts = [
-        f"{article.get('title', '')}\n\n{article.get('content', '')}".strip()
-        for article in known_article_list
+    missing = [
+        article for article in known_article_list if not article.get("vector")
     ]
-    vectors = embedding_model.embed_documents(texts + known_texts)
+    missing_texts = [
+        f"{article.get('title', '')}\n\n{article.get('content', '')}".strip()
+        for article in missing
+    ]
+    vectors = embedding_model.embed_documents(texts + missing_texts)
     article_vectors = vectors[:len(article_list)]
-    known_vectors = vectors[len(article_list):]
+    for article, vector in zip(missing, vectors[len(article_list):]):
+        article["vector"] = vector
+    known_vectors = [article["vector"] for article in known_article_list]
 
     kept: list[CleanedArticle] = []
     kept_vectors: list[list[float]] = []

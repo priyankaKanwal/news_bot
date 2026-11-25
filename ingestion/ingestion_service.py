@@ -88,7 +88,11 @@ def _known_article_ids(client) -> set[str]:
 
 
 def _known_article_context(client) -> list[dict]:
-    """Load lightweight stored text and publication dates for duplicate checks."""
+    """Load stored chunk vectors and publication dates for duplicate checks.
+
+    Reusing the stored vectors avoids re-embedding every known chunk through
+    the Jina API on each ingestion run.
+    """
     articles = []
     offset = None
 
@@ -98,7 +102,7 @@ def _known_article_context(client) -> list[dict]:
             limit=256,
             offset=offset,
             with_payload=True,
-            with_vectors=False,
+            with_vectors=True,
         )
         for point in points:
             payload = point.payload or {}
@@ -110,6 +114,7 @@ def _known_article_context(client) -> list[dict]:
             articles.append({
                 "title": metadata.get("title", ""),
                 "content": payload.get("page_content", ""),
+                "vector": point.vector,
                 "published_at": datetime.fromtimestamp(
                     float(published_ts),
                     tz=timezone.utc,
