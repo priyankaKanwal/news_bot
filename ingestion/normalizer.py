@@ -22,15 +22,7 @@ def _text(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _first_content(entry: Mapping[str, object]) -> str:
-    contents = entry.get("content")
-    if isinstance(contents, list):
-        for item in contents:
-            if isinstance(item, Mapping):
-                content = _text(item.get("value"))
-                if content:
-                    return content
-
+def _summary(entry: Mapping[str, object]) -> str:
     return _text(entry.get("summary")) or ""
 
 
@@ -66,7 +58,7 @@ def normalize_entry(
     """
     return {
         "title": _text(entry.get("title")) or "",
-        "content": _first_content(entry),
+        "content": _summary(entry),
         "url": _text(entry.get("link")) or "",
         "published_at": (
             _text(entry.get("published")) or _text(entry.get("updated"))

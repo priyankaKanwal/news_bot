@@ -215,7 +215,10 @@ def run_ingestion() -> dict:
             feed_reports.append(stats)
             failed_feeds += stats["error"] is not None
 
-        unique_articles, duplicates_removed = deduplicate_articles(articles)
+        unique_articles, duplicates_removed = deduplicate_articles(
+            articles,
+            known_article_ids=known_ids.copy(),
+        )
         unique_articles, near_duplicates_removed = detect_near_duplicates(
             unique_articles,
             get_embedding_model(),
@@ -223,17 +226,11 @@ def run_ingestion() -> dict:
             known_articles=known_articles,
         )
         duplicates_removed += near_duplicates_removed
-        articles_to_index = [
-            article
-            for article in unique_articles
-            if article["article_id"] not in known_ids
-        ]
-        duplicates_removed += len(unique_articles) - len(articles_to_index)
         articles_saved = _store_articles(unique_articles)
 
         documents = []
         document_ids = []
-        for article in articles_to_index:
+        for article in unique_articles:
             chunks, chunk_ids = build_documents(article)
             documents.extend(chunks)
             document_ids.extend(chunk_ids)
@@ -248,7 +245,7 @@ def run_ingestion() -> dict:
             "expired_articles_deleted": deleted_articles or 0,
             "expired_chunks_deleted": deleted_chunks,
             "articles_saved": articles_saved,
-            "stored_articles": len(articles_to_index),
+            "stored_articles": len(unique_articles),
             "stored_chunks": len(documents),
         }
     finally:

@@ -7,9 +7,9 @@ The current implementation uses **Google Gemini** (via `langchain-google-genai`)
 ## What it does
 
 - Fetches and parses the RSS feeds listed in [`feeds.yaml`](feeds.yaml).
-- Cleans article text and canonicalizes URLs; skips invalid articles, missing dates, and articles outside the last 30 days.
-- Deduplicates by article ID, canonical URL, publisher-scoped feed GUID, and normalized content.
-- Splits articles into overlapping text chunks and stores them with metadata in Qdrant.
+- Uses the RSS title and summary (not the feed's full-content field), cleans text, and canonicalizes URLs; skips invalid articles, missing dates, and articles outside the last 30 days.
+- Skips article IDs already present in Qdrant before embedding, and deduplicates incoming articles by canonical URL, publisher-scoped feed GUID, normalized content, and semantic similarity.
+- Splits title-and-summary text into overlapping text chunks and stores them with metadata in Qdrant.
 - Retrieves relevant recent news, optionally reranks it, and asks Gemini to answer using only the retrieved articles.
 - Provides a recency-based roundup for broad questions such as “What are the latest headlines?”
 - Stores conversations and messages in PostgreSQL and displays them in the React chat interface.
