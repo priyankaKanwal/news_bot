@@ -33,7 +33,7 @@ export default function ChatInput({ onSend, disabled }) {
   }
 
   return (
-    <form className="mx-auto w-full max-w-[920px] shrink-0 bg-[var(--surface)] px-4 pb-3 pt-2 min-[761px]:px-8 min-[761px]:pb-4" onSubmit={submit}>
+    <form className="mx-auto w-full max-w-[920px] shrink-0 bg-[var(--surface)] px-4 pb-3 pt-2 lg:px-8 lg:pb-4" onSubmit={submit}>
       <div className="flex items-end gap-2 rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-[7px_7px_7px_16px] shadow-[0_8px_24px_rgba(28,32,44,0.08)] transition focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--focus),0_8px_24px_rgba(28,32,44,0.08)]">
         <textarea
           ref={ref}

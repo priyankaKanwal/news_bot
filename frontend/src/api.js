@@ -101,8 +101,14 @@ export function getConversations() {
   return request('/api/conversations')
 }
 
-export function getRecentArticles() {
-  return request('/api/articles/recent?limit=6')
+export function getRecentArticles({ limit = 6, offset = 0, category } = {}) {
+  const params = new URLSearchParams({ limit, offset })
+  if (category) params.set('category', category)
+  return request(`/api/articles/recent?${params}`)
+}
+
+export function getArticleCategories() {
+  return request('/api/articles/categories')
 }
 
 export function getConversation(conversationId) {

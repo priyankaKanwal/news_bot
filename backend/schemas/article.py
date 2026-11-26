@@ -12,3 +12,8 @@ class RecentArticle(BaseModel):
     category: str
     published_at: datetime
     url: str
+
+
+class ArticleCategory(BaseModel):
+    category: str
+    count: int

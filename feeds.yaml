@@ -23,3 +23,19 @@ feeds:
   - name: NDTV
     url: https://feeds.feedburner.com/ndtvnews-top-stories
     category: World News
+
+  - name: BBC News
+    url: https://feeds.bbci.co.uk/news/politics/rss.xml
+    category: Politics
+
+  - name: BBC Sport
+    url: https://feeds.bbci.co.uk/sport/rss.xml
+    category: Sports
+
+  - name: The Hindu
+    url: https://www.thehindu.com/business/Economy/feeder/default.rss
+    category: Economy
+
+  - name: BBC News
+    url: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
+    category: Science & Technology
