@@ -3,8 +3,8 @@
 import logging
 from datetime import datetime, timezone
 
-from backend.database import Base, SessionLocal, engine
-from backend.models import Article
+from backend.db.models import Article
+from backend.db.postgres import Base, SessionLocal, engine
 from ingestion.date_filter import cutoff_datetime, delete_expired_articles
 from rag.config import COLLECTION_NAME
 from rag.vector_store import get_client

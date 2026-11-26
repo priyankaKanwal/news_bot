@@ -10,8 +10,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
-from backend.database import Base, SessionLocal, engine
-from backend.models import Article
+from backend.db.models import Article
+from backend.db.postgres import Base, SessionLocal, engine
 from ingestion.cleaner import CleanedArticle, clean_article
 from ingestion.config_loader import FeedConfig, load_feeds
 from ingestion.date_filter import (

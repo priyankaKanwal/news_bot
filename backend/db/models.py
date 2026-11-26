@@ -13,7 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
-from backend.database import Base
+from backend.db.postgres import Base
 
 
 def utc_now() -> datetime:

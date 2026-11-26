@@ -45,7 +45,13 @@ does not run inside the FastAPI application.
 
 ```text
 .
-├── backend/       # FastAPI app, chat API, SQLAlchemy models and services
+├── backend/
+│   ├── api/       # FastAPI routes and request dependencies
+│   ├── controllers/ # HTTP request orchestration
+│   ├── core/      # Application configuration and logging
+│   ├── db/        # PostgreSQL engine and SQLAlchemy models
+│   ├── schemas/   # API request and response schemas
+│   └── services/  # Chat, article, and conversation operations
 ├── docs/          # Product requirements, project plan, and build guide
 ├── frontend/      # React + Vite + Tailwind chat interface
 ├── ingestion/     # RSS loading, cleaning, filtering, deduplication, storage
@@ -113,6 +119,9 @@ These PostgreSQL credentials are for local development only. Use strong credenti
 The ingestion scheduler defaults to 02:00 UTC each day. Set the hour, minute, and
 timezone above to change its daily run time. Use a valid timezone name such as
 `Asia/Kolkata`.
+
+Set `CORS_ORIGINS` to a comma-separated list when the frontend runs on a different
+origin. It defaults to `http://localhost:5173`.
 
 Optional RAG settings:
 
@@ -231,7 +240,9 @@ All endpoints are prefixed with `/api`.
 
 ### `GET /api/health`
 
-Checks that the API process is responding.
+Checks API responsiveness, PostgreSQL and Qdrant availability, and whether the
+Gemini and Jina API keys are configured. Returns HTTP 200 when all checks pass
+and HTTP 503 otherwise. Gemini and Jina availability is not actively probed.
 
 ### `POST /api/ingestion/run`
 
