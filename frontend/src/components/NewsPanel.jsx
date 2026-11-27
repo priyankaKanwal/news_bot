@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getArticleCategories, getRecentArticles } from '../api'
+import { getArticleCategories, getRecentArticles, runIngestion } from '../api'
 
 const ALL = 'All'
 const ALL_FETCH_LIMIT = 30
@@ -55,6 +55,8 @@ export default function NewsPanel({ open, onClose, onAsk }) {
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -92,6 +94,27 @@ export default function NewsPanel({ open, onClose, onAsk }) {
     setLoading(true)
     setError('')
     setReloadKey((key) => key + 1)
+  }
+
+  async function refreshFeed() {
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshMessage('')
+    try {
+      const report = await runIngestion()
+      setLoading(true)
+      setError('')
+      setReloadKey((key) => key + 1)
+      setRefreshMessage(
+        report.articles_saved
+          ? `${report.articles_saved} new article${report.articles_saved === 1 ? '' : 's'} added`
+          : 'Feed is up to date',
+      )
+    } catch (err) {
+      setRefreshMessage(err.message)
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   async function loadMore() {
@@ -134,10 +157,30 @@ export default function NewsPanel({ open, onClose, onAsk }) {
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">From your news feed</span>
           <h2 className="m-0 text-base font-bold tracking-[-0.02em]">Latest news</h2>
         </div>
-        <button className="grid size-[38px] place-items-center rounded-[10px] border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--text)] xl:hidden" onClick={onClose} aria-label="Close news panel">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="grid size-[38px] place-items-center rounded-[10px] border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={refreshFeed}
+            disabled={refreshing}
+            aria-label="Refresh feed"
+            title={refreshing ? 'Refreshing feed' : 'Refresh feed'}
+          >
+            <svg className={refreshing ? 'animate-spin' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 6v5h-5" />
+              <path d="M19 11a7 7 0 1 0-2.05 4.95" />
+            </svg>
+          </button>
+          <button className="grid size-[38px] place-items-center rounded-[10px] border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--text)] xl:hidden" onClick={onClose} aria-label="Close news panel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
       </div>
+
+      {refreshMessage && (
+        <div className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted)]" role="status" aria-live="polite">
+          {refreshMessage}
+        </div>
+      )}
 
       <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-[var(--border)] px-4 py-3 [scrollbar-width:none]" role="tablist" aria-label="News categories">
         {tabs.map((tab) => (

@@ -118,3 +118,7 @@ export function getConversation(conversationId) {
 export function deleteConversation(conversationId) {
   return request(`/api/conversations/${conversationId}`, { method: 'DELETE' })
 }
+
+export function runIngestion() {
+  return request('/api/ingestion/run', { method: 'POST' })
+}
