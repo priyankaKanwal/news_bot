@@ -14,7 +14,7 @@ VECTOR_SIZE = 1024   # Jina's `dimensions` parameter; also the Qdrant vector siz
 
 # LLM (Google Gemini via langchain-google-genai)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3.5-flash")
 LLM_TEMPERATURE = 0
 LLM_TIMEOUT = 120        # seconds
 

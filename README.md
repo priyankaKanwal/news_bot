@@ -106,7 +106,7 @@ DATABASE_URL=postgresql+psycopg://news_bot:news_bot_dev@localhost:5434/news_bot
 QDRANT_URL=http://localhost:6333
 
 GOOGLE_API_KEY=your-gemini-api-key
-LLM_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-3.5-flash
 JINA_API_KEY=your-jina-api-key
 
 INGESTION_SCHEDULE_HOUR=2
@@ -128,7 +128,7 @@ Optional RAG settings:
 | Variable | Default | Description |
 |---|---:|---|
 | `RETRIEVE_TOP_K` | `10` | Maximum candidate chunks to retrieve |
-| `LLM_MODEL` | `gemini-2.5-flash` | Gemini model used for answers |
+| `LLM_MODEL` | `gemini-3.5-flash` | Gemini model used for answers |
 | `SCORE_THRESHOLD` | `0.60` | Minimum vector relevance score, `(cosine + 1) / 2` |
 | `RERANK_TOP_N` | `3` | Number of chunks kept after reranking |
 | `USE_RERANKER` | `1` | Set to `0` to disable the cross-encoder reranker |
